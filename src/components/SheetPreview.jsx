@@ -1,29 +1,39 @@
 import React, { useMemo, useState } from 'react';
-import { RotateCcw, Layers, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 
 // ─── Page ordering engines for different imposition modes ────────────────
-function getPageOrder(mode, totalPages, pagesPerSheet, sheetIndex, side) {
+function getPageOrder(mode, totalPages, pagesPerSheet, sheetIndex, side, workStyle) {
   const cols = pagesPerSheet.cols;
   const rows = pagesPerSheet.rows;
   const perSide = cols * rows;
+  const isSimplex = workStyle === 'SIMPLEX' || workStyle === 'SINGLE_SIDED';
+
+  // For simplex mode, only FRONT has pages — BACK is always blank
+  if (isSimplex && side === 'BACK') {
+    return Array.from({ length: perSide }, () => null);
+  }
 
   switch (mode) {
     case 'SADDLE_STITCH':
       return getSaddleStitchOrder(totalPages, cols, rows, sheetIndex, side);
     case 'PERFECT_BINDING':
-      return getPerfectBindingOrder(totalPages, perSide, sheetIndex, side);
+      return getPerfectBindingOrder(totalPages, perSide, sheetIndex, side, isSimplex);
     case 'CUT_AND_STACK':
-      return getCutAndStackOrder(totalPages, perSide, sheetIndex, side);
+      return getCutAndStackOrder(totalPages, perSide, sheetIndex, side, isSimplex);
     case 'STEP_AND_REPEAT':
       return getStepAndRepeatOrder(perSide);
     case 'N_UP':
     default:
-      return getNUpOrder(totalPages, perSide, sheetIndex, side);
+      return getNUpOrder(totalPages, perSide, sheetIndex, side, isSimplex);
   }
 }
 
-function getNUpOrder(totalPages, perSide, sheetIndex, side) {
-  const startPage = sheetIndex * perSide * 2 + (side === 'FRONT' ? 0 : perSide);
+function getNUpOrder(totalPages, perSide, sheetIndex, side, isSimplex) {
+  // Simplex: each sheet has perSide pages (front only)
+  // Duplex: each sheet has perSide*2 pages (front + back)
+  const pagesPerSheet = isSimplex ? perSide : perSide * 2;
+  const offset = isSimplex ? 0 : (side === 'FRONT' ? 0 : perSide);
+  const startPage = sheetIndex * pagesPerSheet + offset;
   return Array.from({ length: perSide }, (_, i) => {
     const pg = startPage + i + 1;
     return pg <= totalPages ? pg : null;
@@ -68,23 +78,25 @@ function getSaddleStitchOrder(totalPages, cols, rows, sheetIndex, side) {
     }
   } else {
     // Fallback to N-up
-    return getNUpOrder(totalPages, cols * rows, sheetIndex, side);
+    return getNUpOrder(totalPages, cols * rows, sheetIndex, side, false);
   }
 
   return pages;
 }
 
-function getPerfectBindingOrder(totalPages, perSide, sheetIndex, side) {
-  const sigSize = perSide * 2; // pages per signature (front + back)
-  const startPage = sheetIndex * sigSize + (side === 'FRONT' ? 0 : perSide);
+function getPerfectBindingOrder(totalPages, perSide, sheetIndex, side, isSimplex) {
+  const pagesPerSheet = isSimplex ? perSide : perSide * 2;
+  const offset = isSimplex ? 0 : (side === 'FRONT' ? 0 : perSide);
+  const startPage = sheetIndex * pagesPerSheet + offset;
   return Array.from({ length: perSide }, (_, i) => {
     const pg = startPage + i + 1;
     return pg <= totalPages ? pg : null;
   });
 }
 
-function getCutAndStackOrder(totalPages, perSide, sheetIndex, side) {
-  const totalSheets = Math.ceil(totalPages / (perSide * 2));
+function getCutAndStackOrder(totalPages, perSide, sheetIndex, side, isSimplex) {
+  const pagesPerSheet = isSimplex ? perSide : perSide * 2;
+  const totalSheets = Math.max(1, Math.ceil(totalPages / pagesPerSheet));
   const pages = [];
   for (let i = 0; i < perSide; i++) {
     const pg = side === 'FRONT'
@@ -101,18 +113,21 @@ function getStepAndRepeatOrder(perSide) {
 
 // ─── Rotation logic per page position ────────────────────────────────────
 function getPageRotation(mode, side, row, col, workStyle) {
-  if (side === 'BACK') {
-    if (workStyle === 'WORK_AND_TUMBLE' || workStyle === 'PERFECTOR') return 180;
-    if (workStyle === 'WORK_AND_TURN') return 180;
-    if (workStyle === 'SHEETWISE' || workStyle === 'DUPLEX') {
-      // Back pages in top row are rotated 180
-      if (row === 0) return 180;
-    }
-  }
-  // Saddle stitch: top row pages are typically rotated 180
-  if (mode === 'SADDLE_STITCH' && side === 'FRONT' && row === 0) {
+  // Work and Tumble turns the paper head-to-foot (vertical axis),
+  // which inverts the back side by 180 degrees.
+  if (workStyle === 'WORK_AND_TUMBLE' && side === 'BACK') {
     return 180;
   }
+
+  // Head-to-head booklet folding:
+  // In saddle stitch or signature booklet layouts with 2 or more rows,
+  // top row pages are oriented head-to-head (180°) so they fold correctly at the spine.
+  if ((mode === 'SADDLE_STITCH' || mode === 'PERFECT_BINDING') && row === 0) {
+    return 180;
+  }
+
+  // Standard N-UP, Step and Repeat, Cut and Stack, and Sheetwise layouts:
+  // All pages remain upright (0°).
   return 0;
 }
 
@@ -203,11 +218,15 @@ export default function SheetPreview({
   sheetIndex = 0,
   pageLabel = '',
   onSheetChange,
+  thumbnails = [],
+  thumbnailsLoading = false,
+  thumbnailsProgress = 0,
 }) {
   const [activeSide, setActiveSide] = useState('FRONT');
   const [showMargins, setShowMargins] = useState(true);
   const [showGutters, setShowGutters] = useState(true);
   const [showBleed, setShowBleed] = useState(true);
+  const [showArtwork, setShowArtwork] = useState(true);
 
   const isDuplex = workStyle !== 'SIMPLEX' && workStyle !== 'SINGLE_SIDED';
 
@@ -253,9 +272,10 @@ export default function SheetPreview({
       parseInt(totalPages) || 16,
       { cols: layout.c, rows: layout.r },
       parseInt(sheetIndex) || 0,
-      activeSide
+      activeSide,
+      workStyle
     );
-  }, [impositionMode, totalPages, layout.c, layout.r, sheetIndex, activeSide]);
+  }, [impositionMode, totalPages, layout.c, layout.r, sheetIndex, activeSide, workStyle]);
 
   // SVG padding around sheet for marks
   const pad = 20;
@@ -328,8 +348,30 @@ export default function SheetPreview({
           <span>{Math.round(layout.sw)}×{Math.round(layout.sh)} mm</span>
         </div>
 
-        {/* Overlay toggles */}
-        <div className="flex items-center gap-1">
+        {/* Overlay & Artwork toggles */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {thumbnailsLoading && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-cyan-950/80 border border-cyan-800 text-[10px] font-mono text-cyan-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+              <span>Rendering PDF {thumbnailsProgress}%</span>
+            </div>
+          )}
+
+          {thumbnails && thumbnails.length > 0 && (
+            <button
+              onClick={() => setShowArtwork(!showArtwork)}
+              className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border transition-all flex items-center gap-1.5 ${
+                showArtwork
+                  ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300'
+                  : 'bg-[#1A2436] border-[#2B3C57] text-slate-400 hover:text-slate-200'
+              }`}
+              title="Toggle between real PDF page artwork and schematic wireframe"
+            >
+              {showArtwork ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-400" />}
+              {showArtwork ? 'ARTWORK' : 'WIREFRAME'}
+            </button>
+          )}
+
           {[
             { label: 'Margins', state: showMargins, set: setShowMargins },
             { label: 'Gutters', state: showGutters, set: setShowGutters },
@@ -364,6 +406,17 @@ export default function SheetPreview({
             <pattern id="gridDots" width="4" height="4" patternUnits="userSpaceOnUse">
               <circle cx="2" cy="2" r="0.3" fill="rgba(255,255,255,0.08)" />
             </pattern>
+            {layout.cells.map((cell, ci) => (
+              <clipPath id={`cell-clip-${ci}`} key={`clip-${ci}`}>
+                <rect
+                  x={pad + cell.x}
+                  y={pad + cell.y}
+                  width={cell.w}
+                  height={cell.h}
+                  rx="0.5"
+                />
+              </clipPath>
+            ))}
           </defs>
           <rect x="0" y="0" width={vbW} height={vbH} fill="url(#gridDots)" />
 
@@ -478,6 +531,8 @@ export default function SheetPreview({
             const rotation = getPageRotation(impositionMode, activeSide, cell.row, cell.col, workStyle);
             const cx = pad + cell.x + cell.w / 2;
             const cy = pad + cell.y + cell.h / 2;
+            const thumbUrl = (pageNum && thumbnails && thumbnails[pageNum - 1]) || null;
+            const hasArtwork = Boolean(thumbUrl && showArtwork);
 
             return (
               <g key={`cell-${ci}`}>
@@ -487,57 +542,124 @@ export default function SheetPreview({
                   y={pad + cell.y}
                   width={cell.w}
                   height={cell.h}
-                  fill={pageNum ? (activeSide === 'FRONT' ? '#B8C8E8' : '#C8B8E8') : '#E8E8E8'}
+                  fill={pageNum ? (hasArtwork ? '#FFFFFF' : (activeSide === 'FRONT' ? '#B8C8E8' : '#C8B8E8')) : '#E8E8E8'}
                   stroke="#8899BB"
                   strokeWidth="0.3"
                   rx="0.5"
                 />
 
-                {pageNum && (
-                  <g transform={rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined}>
-                    {/* Large page number */}
+                {/* If artwork thumbnail is available and enabled, render actual PDF page */}
+                {hasArtwork ? (
+                  <g clipPath={`url(#cell-clip-${ci})`}>
+                    <g transform={rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined}>
+                      <image
+                        href={thumbUrl}
+                        x={pad + cell.x}
+                        y={pad + cell.y}
+                        width={cell.w}
+                        height={cell.h}
+                        preserveAspectRatio="xMidYMid meet"
+                      />
+                    </g>
+
+                    {/* Page badge overlay in bottom-left */}
+                    <rect
+                      x={pad + cell.x + 2}
+                      y={pad + cell.y + cell.h - 9}
+                      width={Math.max(16, String(pageNum).length * 4.5 + 8)}
+                      height={7}
+                      rx="1.5"
+                      fill="rgba(15, 23, 42, 0.85)"
+                      stroke="rgba(255, 255, 255, 0.2)"
+                      strokeWidth="0.2"
+                    />
                     <text
-                      x={cx}
-                      y={cy + (cell.h > 60 ? 8 : 4)}
+                      x={pad + cell.x + 2 + Math.max(16, String(pageNum).length * 4.5 + 8) / 2}
+                      y={pad + cell.y + cell.h - 4.2}
                       textAnchor="middle"
-                      fontSize={Math.min(cell.w, cell.h) * 0.35}
+                      fontSize="3.8"
                       fontWeight="bold"
                       fontFamily="monospace"
-                      fill="rgba(255,255,255,0.6)"
-                      stroke="rgba(100,120,180,0.3)"
-                      strokeWidth="0.5"
+                      fill="#38BDF8"
                     >
-                      {pageNum}
+                      P.{pageNum}
                     </text>
 
-                    {/* Page size label */}
-                    <text
-                      x={pad + cell.x + 3}
-                      y={pad + cell.y + cell.h - 3}
-                      fontSize={Math.min(cell.w, cell.h) * 0.08}
-                      fontFamily="monospace"
-                      fill="rgba(80,90,120,0.7)"
-                    >
-                      {sizeLabel}
-                    </text>
-
-                    {/* Rotation indicator */}
+                    {/* Rotation indicator if rotated */}
                     {rotation !== 0 && (
-                      <text
-                        x={pad + cell.x + cell.w - 5}
-                        y={pad + cell.y + 6}
-                        fontSize={Math.min(cell.w, cell.h) * 0.06}
-                        fontFamily="monospace"
-                        fill="rgba(200,100,50,0.8)"
-                        textAnchor="end"
-                      >
-                        ↻{rotation}°
-                      </text>
+                      <g>
+                        <rect
+                          x={pad + cell.x + cell.w - 18}
+                          y={pad + cell.y + 2}
+                          width={16}
+                          height={6}
+                          rx="1"
+                          fill="rgba(15, 23, 42, 0.85)"
+                          stroke="rgba(251, 146, 60, 0.4)"
+                          strokeWidth="0.2"
+                        />
+                        <text
+                          x={pad + cell.x + cell.w - 10}
+                          y={pad + cell.y + 6.2}
+                          fontSize="3.2"
+                          fontFamily="monospace"
+                          fill="#FB923C"
+                          textAnchor="middle"
+                          fontWeight="bold"
+                        >
+                          ↻{rotation}°
+                        </text>
+                      </g>
                     )}
                   </g>
+                ) : (
+                  /* Schematic wireframe view */
+                  pageNum && (
+                    <g transform={rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined}>
+                      {/* Large page number */}
+                      <text
+                        x={cx}
+                        y={cy + (cell.h > 60 ? 8 : 4)}
+                        textAnchor="middle"
+                        fontSize={Math.min(cell.w, cell.h) * 0.35}
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                        fill="rgba(255,255,255,0.6)"
+                        stroke="rgba(100,120,180,0.3)"
+                        strokeWidth="0.5"
+                      >
+                        {pageNum}
+                      </text>
+
+                      {/* Page size label */}
+                      <text
+                        x={pad + cell.x + 3}
+                        y={pad + cell.y + cell.h - 3}
+                        fontSize={Math.min(cell.w, cell.h) * 0.08}
+                        fontFamily="monospace"
+                        fill="rgba(80,90,120,0.7)"
+                      >
+                        {sizeLabel}
+                      </text>
+
+                      {/* Rotation indicator */}
+                      {rotation !== 0 && (
+                        <text
+                          x={pad + cell.x + cell.w - 5}
+                          y={pad + cell.y + 6}
+                          fontSize={Math.min(cell.w, cell.h) * 0.06}
+                          fontFamily="monospace"
+                          fill="rgba(200,100,50,0.8)"
+                          textAnchor="end"
+                        >
+                          ↻{rotation}°
+                        </text>
+                      )}
+                    </g>
+                  )
                 )}
 
-                {/* Empty page indicator */}
+                {/* Empty / Blank page indicator */}
                 {!pageNum && (
                   <text
                     x={cx}
@@ -551,13 +673,13 @@ export default function SheetPreview({
                   </text>
                 )}
 
-                {/* Cell index label (top-left corner bracket) */}
+                {/* Cell grid coordinate / index tag */}
                 <text
                   x={pad + cell.x + 2}
                   y={pad + cell.y + Math.min(cell.w, cell.h) * 0.08 + 2}
                   fontSize={Math.min(cell.w, cell.h) * 0.06}
                   fontFamily="monospace"
-                  fill="rgba(80,90,120,0.5)"
+                  fill={hasArtwork ? 'rgba(15, 23, 42, 0.6)' : 'rgba(80,90,120,0.5)'}
                 >
                   [{ci + 1}]
                 </text>

@@ -76,10 +76,45 @@ export default function AnalysisSection({ jobId, analysisData, onAnalysisSuccess
   // Compute metrics from analysis object
   const pages = data.pages || [];
   const firstPage = pages[0] || {};
-  const mediaBox = firstPage.mediaBox || {};
-  const trimBox = firstPage.trimBox || {};
-  const cropBox = firstPage.cropBox || {};
-  const bleedBox = firstPage.bleedBox || {};
+  const boxes = firstPage.boxes || {};
+
+  const normalizeBox = (box) => {
+    if (!box) return null;
+    const x1 = Number(box.x ?? box.x1 ?? 0);
+    const y1 = Number(box.y ?? box.y1 ?? 0);
+    const w = Number(box.width ?? (box.x2 != null ? box.x2 - x1 : 0));
+    const h = Number(box.height ?? (box.y2 != null ? box.y2 - y1 : 0));
+    const x2 = Number(box.x2 ?? (x1 + w));
+    const y2 = Number(box.y2 ?? (y1 + h));
+    const widthMm = box.widthMm ?? Math.round(w * 0.352778 * 10) / 10;
+    const heightMm = box.heightMm ?? Math.round(h * 0.352778 * 10) / 10;
+    return {
+      x1: Math.round(x1 * 10) / 10,
+      y1: Math.round(y1 * 10) / 10,
+      x2: Math.round(x2 * 10) / 10,
+      y2: Math.round(y2 * 10) / 10,
+      width: w,
+      height: h,
+      widthMm,
+      heightMm
+    };
+  };
+
+  const mediaBox = normalizeBox(boxes.media || firstPage.mediaBox);
+  const cropBox = normalizeBox(boxes.crop || firstPage.cropBox) || mediaBox;
+  const trimBox = normalizeBox(boxes.trim || firstPage.trimBox);
+  const bleedBox = normalizeBox(boxes.bleed || firstPage.bleedBox);
+
+  // Check if trim / bleed are distinct from mediaBox
+  const separateTrimDetected = firstPage.boxRelationship?.separateTrimDetected ?? 
+    (trimBox && mediaBox && (trimBox.width !== mediaBox.width || trimBox.height !== mediaBox.height));
+  const separateBleedDetected = firstPage.boxRelationship?.separateBleedDetected ?? 
+    (bleedBox && mediaBox && (bleedBox.width !== mediaBox.width || bleedBox.height !== mediaBox.height));
+
+  const srcW_pt = firstPage.source?.widthPt || mediaBox?.width || 0;
+  const srcH_pt = firstPage.source?.heightPt || mediaBox?.height || 0;
+  const srcW_mm = Math.round(srcW_pt * 0.352778 * 10) / 10;
+  const srcH_mm = Math.round(srcH_pt * 0.352778 * 10) / 10;
 
   return (
     <div className="w-full max-w-5xl mx-auto py-6 px-4">
@@ -124,10 +159,10 @@ export default function AnalysisSection({ jobId, analysisData, onAnalysisSuccess
           </div>
           <div className="space-y-1">
             <p className="text-sm font-bold text-white font-mono">
-              {firstPage.dimensionsMm ? `${firstPage.dimensionsMm.width} × ${firstPage.dimensionsMm.height} mm` : 'N/A'}
+              {srcW_mm && srcH_mm ? `${srcW_mm} × ${srcH_mm} mm` : 'Standard'}
             </p>
             <p className="text-[11px] text-slate-400 font-mono">
-              {firstPage.dimensionsPt ? `${firstPage.dimensionsPt.width} × ${firstPage.dimensionsPt.height} pt` : ''}
+              {srcW_pt && srcH_pt ? `${Math.round(srcW_pt)} × ${Math.round(srcH_pt)} pt (${firstPage.source?.orientation || 'PORTRAIT'})` : ''}
             </p>
           </div>
         </div>
@@ -198,44 +233,46 @@ export default function AnalysisSection({ jobId, analysisData, onAnalysisSuccess
               {/* MediaBox */}
               <tr>
                 <td className="py-2.5 px-3 font-bold text-cyan-300">MediaBox</td>
-                <td className="py-2.5 px-3 text-slate-300">{mediaBox.x1 ?? 0}</td>
-                <td className="py-2.5 px-3 text-slate-300">{mediaBox.y1 ?? 0}</td>
-                <td className="py-2.5 px-3 text-slate-300">{mediaBox.x2 ?? 0}</td>
-                <td className="py-2.5 px-3 text-slate-300">{mediaBox.y2 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{mediaBox?.x1 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{mediaBox?.y1 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{mediaBox?.x2 ?? Math.round(srcW_pt)}</td>
+                <td className="py-2.5 px-3 text-slate-300">{mediaBox?.y2 ?? Math.round(srcH_pt)}</td>
                 <td className="py-2.5 px-3 font-bold text-white">
-                  {mediaBox.widthMm && mediaBox.heightMm ? `${mediaBox.widthMm} × ${mediaBox.heightMm} mm` : 'Defined'}
+                  {mediaBox?.widthMm && mediaBox?.heightMm ? `${mediaBox.widthMm} × ${mediaBox.heightMm} mm` : `${srcW_mm} × ${srcH_mm} mm`}
                 </td>
-                <td className="py-2.5 px-3"><span className="text-emerald-400 font-bold">✓ Active</span></td>
+                <td className="py-2.5 px-3"><span className="text-emerald-400 font-bold">✓ Active (Sheet Paper)</span></td>
               </tr>
 
               {/* CropBox */}
               <tr>
                 <td className="py-2.5 px-3 font-bold text-blue-300">CropBox</td>
-                <td className="py-2.5 px-3 text-slate-300">{cropBox.x1 ?? mediaBox.x1 ?? 0}</td>
-                <td className="py-2.5 px-3 text-slate-300">{cropBox.y1 ?? mediaBox.y1 ?? 0}</td>
-                <td className="py-2.5 px-3 text-slate-300">{cropBox.x2 ?? mediaBox.x2 ?? 0}</td>
-                <td className="py-2.5 px-3 text-slate-300">{cropBox.y2 ?? mediaBox.y2 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{cropBox?.x1 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{cropBox?.y1 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{cropBox?.x2 ?? Math.round(srcW_pt)}</td>
+                <td className="py-2.5 px-3 text-slate-300">{cropBox?.y2 ?? Math.round(srcH_pt)}</td>
                 <td className="py-2.5 px-3 font-bold text-white">
-                  {cropBox.widthMm && cropBox.heightMm ? `${cropBox.widthMm} × ${cropBox.heightMm} mm` : 'Match MediaBox'}
+                  {cropBox?.widthMm && cropBox?.heightMm ? `${cropBox.widthMm} × ${cropBox.heightMm} mm` : 'Matches MediaBox'}
                 </td>
-                <td className="py-2.5 px-3"><span className="text-cyan-400 font-bold">✓ Active</span></td>
+                <td className="py-2.5 px-3"><span className="text-cyan-400 font-bold">✓ Active (Visible Area)</span></td>
               </tr>
 
               {/* TrimBox */}
               <tr>
                 <td className="py-2.5 px-3 font-bold text-emerald-300">TrimBox</td>
-                <td className="py-2.5 px-3 text-slate-300">{trimBox.x1 ?? '-'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{trimBox.y1 ?? '-'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{trimBox.x2 ?? '-'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{trimBox.y2 ?? '-'}</td>
+                <td className="py-2.5 px-3 text-slate-300">{trimBox?.x1 ?? mediaBox?.x1 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{trimBox?.y1 ?? mediaBox?.y1 ?? 0}</td>
+                <td className="py-2.5 px-3 text-slate-300">{trimBox?.x2 ?? mediaBox?.x2 ?? Math.round(srcW_pt)}</td>
+                <td className="py-2.5 px-3 text-slate-300">{trimBox?.y2 ?? mediaBox?.y2 ?? Math.round(srcH_pt)}</td>
                 <td className="py-2.5 px-3 font-bold text-white">
-                  {trimBox.widthMm && trimBox.heightMm ? `${trimBox.widthMm} × ${trimBox.heightMm} mm` : 'Calculated'}
+                  {trimBox?.widthMm && trimBox?.heightMm ? `${trimBox.widthMm} × ${trimBox.heightMm} mm` : `${srcW_mm} × ${srcH_mm} mm`}
                 </td>
                 <td className="py-2.5 px-3">
-                  {trimBox.x2 ? (
-                    <span className="text-emerald-400 font-bold">✓ Defined</span>
+                  {separateTrimDetected ? (
+                    <span className="text-emerald-400 font-bold">✓ Defined (Explicit)</span>
                   ) : (
-                    <span className="text-amber-400 font-bold">! Auto-Inferred</span>
+                    <span className="text-amber-400 font-bold" title="No /TrimBox tag in PDF dictionary; defaulted to MediaBox boundary">
+                      ! Auto-Inferred (Matches MediaBox)
+                    </span>
                   )}
                 </td>
               </tr>
@@ -243,18 +280,36 @@ export default function AnalysisSection({ jobId, analysisData, onAnalysisSuccess
               {/* BleedBox */}
               <tr>
                 <td className="py-2.5 px-3 font-bold text-amber-300">BleedBox</td>
-                <td className="py-2.5 px-3 text-slate-300">{bleedBox.x1 ?? '-'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{bleedBox.y1 ?? '-'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{bleedBox.x2 ?? '-'}</td>
-                <td className="py-2.5 px-3 text-slate-300">{bleedBox.y2 ?? '-'}</td>
+                <td className="py-2.5 px-3 text-slate-300">{bleedBox?.x1 ?? (separateBleedDetected ? '-' : 0)}</td>
+                <td className="py-2.5 px-3 text-slate-300">{bleedBox?.y1 ?? (separateBleedDetected ? '-' : 0)}</td>
+                <td className="py-2.5 px-3 text-slate-300">{bleedBox?.x2 ?? (separateBleedDetected ? '-' : Math.round(srcW_pt))}</td>
+                <td className="py-2.5 px-3 text-slate-300">{bleedBox?.y2 ?? (separateBleedDetected ? '-' : Math.round(srcH_pt))}</td>
                 <td className="py-2.5 px-3 font-bold text-white">
-                  {bleedBox.widthMm && bleedBox.heightMm ? `${bleedBox.widthMm} × ${bleedBox.heightMm} mm` : '+3mm Allowance'}
+                  {separateBleedDetected && bleedBox?.widthMm ? `${bleedBox.widthMm} × ${bleedBox.heightMm} mm` : '+3mm Allowance Recommended'}
                 </td>
-                <td className="py-2.5 px-3"><span className="text-cyan-400 font-bold">✓ Computed</span></td>
+                <td className="py-2.5 px-3">
+                  {separateBleedDetected ? (
+                    <span className="text-emerald-400 font-bold">✓ Defined</span>
+                  ) : (
+                    <span className="text-amber-400 font-bold">! Missing in PDF (Needs Bleed Rule)</span>
+                  )}
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
+
+        {/* Prepress Guidance Note */}
+        {!separateTrimDetected && (
+          <div className="mt-3 p-2.5 rounded-lg bg-[#0F1622] border border-[#202E42] text-[11px] font-mono text-slate-400 flex items-start gap-2">
+            <span className="text-amber-400 font-bold shrink-0">ℹ️ Prepress Note:</span>
+            <span>
+              This PDF does not contain an author-defined <code className="text-cyan-300">/TrimBox</code> or <code className="text-cyan-300">/BleedBox</code> dictionary. 
+              The trim boundary is automatically inferred to the page boundary (<code className="text-slate-200">{srcW_mm} × {srcH_mm} mm</code>). 
+              You can define precise trim & bleed margins in Step 04 or proceed to Imposition.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

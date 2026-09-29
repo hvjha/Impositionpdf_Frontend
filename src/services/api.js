@@ -100,6 +100,13 @@ export function getJobOutputUrl(jobId) {
 }
 
 /**
+ * Get Job Source / Active Input PDF Stream URL
+ */
+export function getSourcePdfUrl(jobId) {
+  return `${API_BASE_URL}/pdfs/${jobId}/source`;
+}
+
+/**
  * Health Check
  */
 export async function checkBackendHealth() {

@@ -167,6 +167,8 @@ export default function App() {
           <ImpositionSection
             jobId={activeJob.jobId}
             analysisData={analysisData}
+            uploadedFile={uploadedFile}
+            activeJob={activeJob}
             onImpositionSuccess={handleImpositionSuccess}
             onProceedToOutput={() => setCurrentStep(6)}
           />
