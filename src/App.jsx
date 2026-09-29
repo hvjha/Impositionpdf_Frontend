@@ -166,6 +166,7 @@ export default function App() {
         {currentStep === 5 && activeJob && (
           <ImpositionSection
             jobId={activeJob.jobId}
+            analysisData={analysisData}
             onImpositionSuccess={handleImpositionSuccess}
             onProceedToOutput={() => setCurrentStep(6)}
           />
