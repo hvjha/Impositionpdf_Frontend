@@ -1,6 +1,39 @@
 const API_BASE_URL = '/api';
 
 /**
+ * Authentication: Login
+ */
+export async function loginUser(username, password) {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Login failed. Please verify credentials.');
+  }
+  return data;
+}
+
+/**
+ * Authentication: Get Current Session
+ */
+export async function getCurrentUser(token) {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error('Session expired');
+  }
+  return response.json();
+}
+
+/**
  * Upload PDF File
  */
 export async function uploadPdfFile(file) {
@@ -15,6 +48,44 @@ export async function uploadPdfFile(file) {
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.message || 'PDF Upload failed');
+  }
+  return data;
+}
+
+/**
+ * Get Job History (Dual: Upload History & Output History)
+ */
+export async function getJobHistory() {
+  const response = await fetch(`${API_BASE_URL}/pdfs/history`);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch job history');
+  }
+  return data;
+}
+
+/**
+ * Get Full Job Details
+ */
+export async function getJobDetails(jobId) {
+  const response = await fetch(`${API_BASE_URL}/pdfs/job/${jobId}`);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to retrieve job details');
+  }
+  return data;
+}
+
+/**
+ * Delete Job from History
+ */
+export async function deleteJob(jobId) {
+  const response = await fetch(`${API_BASE_URL}/pdfs/job/${jobId}`, {
+    method: 'DELETE'
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to delete job');
   }
   return data;
 }

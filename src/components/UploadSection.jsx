@@ -7,11 +7,12 @@ import {
   ArrowRight, 
   ShieldCheck,
   Zap,
-  HardDrive
+  HardDrive,
+  FolderArchive
 } from 'lucide-react';
 import { uploadPdfFile } from '../services/api';
 
-export default function UploadSection({ onUploadSuccess }) {
+export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -180,6 +181,17 @@ export default function UploadSection({ onUploadSuccess }) {
             </>
           )}
         </button>
+
+        {onOpenHistory && (
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-xs tracking-wide bg-[#151D2A] hover:bg-[#1D2738] text-slate-300 hover:text-white border border-[#27364D] transition-all cursor-pointer"
+          >
+            <FolderArchive className="w-4 h-4 text-cyan-400" />
+            <span>Browse Previous Uploads & Impositions</span>
+          </button>
+        )}
       </div>
 
       {/* Feature Highlights */}

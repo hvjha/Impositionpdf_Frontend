@@ -215,6 +215,8 @@ export default function SheetPreview({
   thumbnails = [],
   thumbnailsLoading = false,
   thumbnailsProgress = 0,
+  pageRotation = 0,
+  pageOrientation = 'AUTO',
   // Cover studio parameters
   coverParams = {
     spineWidth: 5.3,
@@ -808,7 +810,7 @@ export default function SheetPreview({
               {textLayout.cells.map((cell, ci) => {
                 const cellData = textCells[ci] || { page: null, rot: 0 };
                 const pageNum = cellData.page;
-                const rotation = cellData.rot;
+                const effectiveRotation = ((cellData.rot || 0) + (parseInt(pageRotation, 10) || 0)) % 360;
                 const cx = pad + cell.x + cell.w / 2;
                 const cy = pad + cell.y + cell.h / 2;
                 const thumbUrl = (pageNum && thumbnails && thumbnails[pageNum - 1]) || null;
@@ -831,7 +833,7 @@ export default function SheetPreview({
                     {/* Artwork image */}
                     {hasArtwork ? (
                       <g>
-                        <g transform={rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined}>
+                        <g transform={effectiveRotation ? `rotate(${effectiveRotation}, ${cx}, ${cy})` : undefined}>
                           <image
                             href={thumbUrl}
                             x={pad + cell.x}
@@ -864,7 +866,7 @@ export default function SheetPreview({
                         </text>
 
                         {/* Rotation indicator */}
-                        {rotation !== 0 && (
+                        {effectiveRotation !== 0 && (
                           <g>
                             <rect
                               x={pad + cell.x + cell.w - 16}
@@ -883,7 +885,7 @@ export default function SheetPreview({
                               textAnchor="middle"
                               fontWeight="bold"
                             >
-                              ↻{rotation}°
+                              ↻{effectiveRotation}°
                             </text>
                           </g>
                         )}
@@ -891,7 +893,7 @@ export default function SheetPreview({
                     ) : (
                       /* Wireframe view */
                       pageNum && (
-                        <g transform={rotation ? `rotate(${rotation}, ${cx}, ${cy})` : undefined}>
+                        <g transform={effectiveRotation ? `rotate(${effectiveRotation}, ${cx}, ${cy})` : undefined}>
                           <text
                             x={cx}
                             y={cy + (cell.h > 60 ? 8 : 4)}
@@ -904,7 +906,7 @@ export default function SheetPreview({
                             {pageNum}
                           </text>
 
-                          {rotation !== 0 && (
+                          {effectiveRotation !== 0 && (
                             <text
                               x={pad + cell.x + cell.w - 4}
                               y={pad + cell.y + 6}
@@ -914,7 +916,7 @@ export default function SheetPreview({
                               textAnchor="end"
                               fontWeight="bold"
                             >
-                              ↻{rotation}°
+                              ↻{effectiveRotation}°
                             </text>
                           )}
                         </g>

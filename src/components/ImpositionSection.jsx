@@ -18,7 +18,9 @@ import {
   Sparkles,
   Calculator,
   Sliders,
-  CheckCircle2
+  CheckCircle2,
+  RotateCw,
+  Compass
 } from 'lucide-react';
 import { imposePdfJob, getSourcePdfUrl, getOutputPdfUrl } from '../services/api';
 import usePdfThumbnails from '../hooks/usePdfThumbnails';
@@ -124,6 +126,11 @@ export default function ImpositionSection({
   const [sheetHeight, setSheetHeight] = useState(914);
   const [customSheet, setCustomSheet] = useState(false);
 
+  // ─── Sheet & Page Orientation ───────────────────────────────────────────
+  const [sheetOrientation, setSheetOrientation] = useState('PORTRAIT'); // 'PORTRAIT' | 'LANDSCAPE'
+  const [pageOrientation, setPageOrientation] = useState('AUTO'); // 'AUTO' | 'PORTRAIT' | 'LANDSCAPE'
+  const [pageRotation, setPageRotation] = useState(0); // 0 | 90 | 180 | 270
+
   // ─── Margins & Bleed (4-Sided) ──────────────────────────────────────────
   const [marginTop, setMarginTop] = useState(10);
   const [marginBottom, setMarginBottom] = useState(10);
@@ -185,9 +192,32 @@ export default function ImpositionSection({
   // Handlers
   const handleSelectSheetPreset = (preset) => {
     setSheetPreset(preset.name);
-    setSheetWidth(preset.width);
-    setSheetHeight(preset.height);
+    let w = preset.width;
+    let h = preset.height;
+    if (sheetOrientation === 'LANDSCAPE' && w < h) {
+      const tmp = w; w = h; h = tmp;
+    } else if (sheetOrientation === 'PORTRAIT' && w > h) {
+      const tmp = w; w = h; h = tmp;
+    }
+    setSheetWidth(w);
+    setSheetHeight(h);
     setCustomSheet(false);
+  };
+
+  const handleToggleSheetOrientation = (newOrientation) => {
+    if (newOrientation === sheetOrientation) return;
+    setSheetOrientation(newOrientation);
+    const w = parseFloat(sheetWidth);
+    const h = parseFloat(sheetHeight);
+    if ((newOrientation === 'LANDSCAPE' && w < h) || (newOrientation === 'PORTRAIT' && w > h)) {
+      setSheetWidth(h);
+      setSheetHeight(w);
+    }
+  };
+
+  const handleSelectPageOrientation = (orient, rot = 0) => {
+    setPageOrientation(orient);
+    setPageRotation(rot);
   };
 
   const handleSetMargin = (side, value) => {
@@ -217,11 +247,15 @@ export default function ImpositionSection({
       sheet: {
         width: parseFloat(sheetWidth),
         height: parseFloat(sheetHeight),
-        unit: 'mm'
+        unit: 'mm',
+        orientation: sheetOrientation
       },
       layout: {
         pagesPerLayout: partMode === 'COVER' ? 4 : selectedLayout,
-        mode: partMode === 'COVER' ? 'COVER' : 'TEXT'
+        mode: partMode === 'COVER' ? 'COVER' : 'TEXT',
+        orientation: pageOrientation,
+        pageOrientation,
+        pageRotation: parseInt(pageRotation, 10) || 0
       },
       workStyle,
       binding: {
@@ -638,6 +672,122 @@ export default function ImpositionSection({
               </div>
             </div>
 
+            {/* Sheet Orientation Selector */}
+            <div>
+              <label className="text-[11px] font-mono text-slate-400 block mb-1">Sheet Orientation (Press Feed)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleToggleSheetOrientation('PORTRAIT')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    sheetOrientation === 'PORTRAIT'
+                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white hover:border-slate-600'
+                  }`}
+                >
+                  <span className="text-sm">↕️</span>
+                  <span>Portrait</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleSheetOrientation('LANDSCAPE')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    sheetOrientation === 'LANDSCAPE'
+                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white hover:border-slate-600'
+                  }`}
+                >
+                  <span className="text-sm">↔️</span>
+                  <span>Landscape</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Page Orientation & Rotation Selector */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
+                  <RotateCw className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Page Orientation & Rotation</span>
+                </label>
+                <span className="text-[10px] font-mono text-cyan-400 font-bold bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                  {pageOrientation} ({pageRotation}°)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1 font-mono text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleSelectPageOrientation('AUTO', 0)}
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
+                    pageOrientation === 'AUTO' && pageRotation === 0
+                      ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                  }`}
+                  title="Auto preserves original page aspect ratio"
+                >
+                  <div className="text-[9px] text-slate-500">AUTO</div>
+                  <div className="text-[10px] font-semibold">Aspect</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPageOrientation('PORTRAIT', 0)}
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
+                    pageOrientation === 'PORTRAIT' && pageRotation === 0
+                      ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                  }`}
+                  title="Portrait 0° Upright"
+                >
+                  <div className="text-[9px] text-slate-500">0°</div>
+                  <div className="text-[10px] font-semibold">Portrait</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPageOrientation('LANDSCAPE', 90)}
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
+                    pageRotation === 90
+                      ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                  }`}
+                  title="Landscape 90° Clockwise"
+                >
+                  <div className="text-[9px] text-slate-500">90° CW</div>
+                  <div className="text-[10px] font-semibold">Landscp</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPageOrientation('PORTRAIT', 180)}
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
+                    pageRotation === 180
+                      ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                  }`}
+                  title="Inverted 180° Head-to-Head"
+                >
+                  <div className="text-[9px] text-slate-500">180°</div>
+                  <div className="text-[10px] font-semibold">Invert</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectPageOrientation('LANDSCAPE', 270)}
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
+                    pageRotation === 270
+                      ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                  }`}
+                  title="Landscape 270° Counter-Clockwise"
+                >
+                  <div className="text-[9px] text-slate-500">270° CCW</div>
+                  <div className="text-[10px] font-semibold">Turn</div>
+                </button>
+              </div>
+            </div>
+
             {/* Work Style Selection */}
             <div>
               <label className="text-[11px] font-mono text-slate-400 block mb-1">Work Style</label>
@@ -796,6 +946,8 @@ export default function ImpositionSection({
             thumbnails={thumbnails}
             thumbnailsLoading={thumbnailsLoading}
             thumbnailsProgress={thumbnailsProgress}
+            pageRotation={pageRotation}
+            pageOrientation={pageOrientation}
             coverParams={{
               spineWidth: calculatedSpine,
               flapWidth,

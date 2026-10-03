@@ -8,14 +8,30 @@ import CropSection from './components/CropSection';
 import ImpositionSection from './components/ImpositionSection';
 import PdfCanvasViewer from './components/PdfCanvasViewer';
 import ConsoleDrawer from './components/ConsoleDrawer';
-import { checkBackendHealth } from './services/api';
+import LoginView from './components/LoginView';
+import HistoryModal from './components/HistoryModal';
+import { checkBackendHealth, getJobDetails } from './services/api';
 
 export default function App() {
+  // ─── Authentication State ───────────────────────────────────────────────
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('prepress_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // ─── Workflow Stepper State ─────────────────────────────────────────────
   const [currentStep, setCurrentStep] = useState(1);
   const [maxAllowedStep, setMaxAllowedStep] = useState(1);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
 
-  // Active Job State
+  // ─── Dual History Modal State ───────────────────────────────────────────
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // ─── Active Job State ───────────────────────────────────────────────────
   const [activeJob, setActiveJob] = useState(null);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [analysisData, setAnalysisData] = useState(null);
@@ -23,7 +39,7 @@ export default function App() {
   const [cropData, setCropData] = useState(null);
   const [impositionData, setImpositionData] = useState(null);
 
-  // System Logs
+  // ─── Telemetry Logs ─────────────────────────────────────────────────────
   const [logs, setLogs] = useState([
     { time: new Date().toLocaleTimeString(), type: 'INFO', message: 'Prepress Studio initialized. Ready for PDF ingestion.' }
   ]);
@@ -46,6 +62,22 @@ export default function App() {
     const interval = setInterval(verifyHealth, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Login handler
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
+    addLog('SUCCESS', `Operator authenticated: ${userData.username} (${userData.role})`);
+  };
+
+  // Logout handler
+  const handleLogout = () => {
+    if (window.confirm("Are you sure you want to sign out of Prepress Studio?")) {
+      localStorage.removeItem('prepress_auth_token');
+      localStorage.removeItem('prepress_auth_user');
+      setUser(null);
+      handleReset();
+    }
+  };
 
   // Step Handlers
   const handleUploadSuccess = (job, file) => {
@@ -99,6 +131,73 @@ export default function App() {
     addLog('INFO', 'Reset workspace. Prepared for new PDF job.');
   };
 
+  // ─── Load Job from Archives (Upload History) ───────────────────────────
+  const handleLoadJob = (job) => {
+    setActiveJob({
+      jobId: job.jobId,
+      originalFileName: job.originalFileName,
+      fileSize: job.fileSize,
+      status: job.status,
+      outputFileId: job.outputFileId
+    });
+    setUploadedFile(null);
+    setAnalysisData(job.analysis || null);
+    setValidationData(job.validation || null);
+    setCropData(job.productionConfig?.crop || null);
+    setImpositionData(job.productionConfig?.imposition || null);
+
+    addLog('SUCCESS', `Loaded archived job #${job.jobId.slice(-6).toUpperCase()}: ${job.originalFileName}`);
+
+    if (job.status === 'COMPLETED' && job.outputFileId) {
+      setMaxAllowedStep(6);
+      setCurrentStep(6);
+    } else if (job.status === 'VALIDATED') {
+      setMaxAllowedStep(5);
+      setCurrentStep(5);
+    } else if (job.status === 'ANALYZED') {
+      setMaxAllowedStep(3);
+      setCurrentStep(3);
+    } else {
+      setMaxAllowedStep(2);
+      setCurrentStep(2);
+    }
+  };
+
+  // ─── Inspect Output from Archives (Output History) ──────────────────────
+  const handleInspectOutput = (outputItem) => {
+    setActiveJob({
+      jobId: outputItem.jobId,
+      originalFileName: outputItem.originalFileName,
+      fileSize: outputItem.fileSize,
+      status: outputItem.status || 'COMPLETED',
+      outputFileId: outputItem.outputFileId
+    });
+    setUploadedFile(null);
+    setMaxAllowedStep(6);
+    setCurrentStep(6);
+    addLog('SUCCESS', `Inspecting imposed output #${outputItem.outputFileId.slice(-6).toUpperCase()}`);
+  };
+
+  // ─── Reimpose Job from Output History ───────────────────────────────────
+  const handleReimposeJob = async (outputItem) => {
+    try {
+      const res = await getJobDetails(outputItem.jobId);
+      if (res.success && res.job) {
+        handleLoadJob(res.job);
+        setMaxAllowedStep(5);
+        setCurrentStep(5);
+        addLog('INFO', `Opened job #${outputItem.jobId.slice(-6).toUpperCase()} in Imposition Studio`);
+      }
+    } catch (err) {
+      addLog('ERROR', `Could not reload job for re-imposition: ${err.message}`);
+    }
+  };
+
+  // If user is not authenticated, show Login Screen
+  if (!user) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="min-[#100%] min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans pb-16">
       
@@ -107,7 +206,10 @@ export default function App() {
         isBackendOnline={isBackendOnline}
         activeJob={activeJob}
         currentStep={currentStep}
+        user={user}
         onReset={handleReset}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Workflow Stepper Bar */}
@@ -120,7 +222,10 @@ export default function App() {
       {/* Main Dynamic Viewport */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
         {currentStep === 1 && (
-          <UploadSection onUploadSuccess={handleUploadSuccess} />
+          <UploadSection 
+            onUploadSuccess={handleUploadSuccess} 
+            onOpenHistory={() => setIsHistoryOpen(true)}
+          />
         )}
 
         {currentStep === 2 && activeJob && (
@@ -186,6 +291,15 @@ export default function App() {
 
       {/* Telemetry Log Drawer */}
       <ConsoleDrawer logs={logs} />
+
+      {/* Dual Column History Modal (Upload History on Left, Output History on Right) */}
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onLoadJob={handleLoadJob}
+        onInspectOutput={handleInspectOutput}
+        onReimposeJob={handleReimposeJob}
+      />
     </div>
   );
 }
