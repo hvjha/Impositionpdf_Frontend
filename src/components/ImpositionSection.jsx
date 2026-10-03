@@ -20,7 +20,12 @@ import {
   Sliders,
   CheckCircle2,
   RotateCw,
-  Compass
+  Compass,
+  MoveHorizontal,
+  MoveVertical,
+  Maximize2,
+  Settings2,
+  SlidersHorizontal
 } from 'lucide-react';
 import { imposePdfJob, getSourcePdfUrl, getOutputPdfUrl } from '../services/api';
 import usePdfThumbnails from '../hooks/usePdfThumbnails';
@@ -48,6 +53,21 @@ const SHEET_PRESETS = [
   { name: '20×26"',         label: '20 × 26 in (508 × 660 mm)', width: 508, height: 660 },
   { name: '23×36"',         label: '23 × 36 in (584 × 914 mm)', width: 584, height: 914 },
   { name: '25×38"',         label: '25 × 38 in (635 × 965 mm)', width: 635, height: 965 },
+  { name: 'CUSTOM',         label: 'Custom Press Sheet Size...', width: null, height: null, isCustom: true },
+];
+
+const BOOK_PRESETS = [
+  { name: 'AUTO',        label: 'Auto (Detect from Source PDF)',              desc: 'Uses uploaded PDF page size', isAuto: true },
+  { name: 'A5',          label: 'A5 (148 × 210 mm)',                  width: 148,   height: 210,   desc: 'Standard Novel / Paperback' },
+  { name: 'A4',          label: 'A4 (210 × 297 mm)',                  width: 210,   height: 297,   desc: 'Magazines, Catalogues, Manuals' },
+  { name: 'ROYAL_8VO',   label: 'Royal Octavo (156 × 234 mm)',        width: 156,   height: 234,   desc: 'Hardcover & Academic Standard' },
+  { name: 'CROWN_8VO',   label: 'Crown Octavo (126 × 190 mm)',        width: 126,   height: 190,   desc: 'Standard Fiction & Trade' },
+  { name: 'DEMY_8VO',    label: 'Demy Octavo (138 × 216 mm)',         width: 138,   height: 216,   desc: 'Non-Fiction, Memoirs, Biography' },
+  { name: 'US_TRADE',    label: 'US Trade 6×9 in (152.4 × 228.6 mm)',  width: 152.4, height: 228.6, desc: 'North American Standard 6×9' },
+  { name: 'US_DIGEST',   label: 'US Digest 5.5×8.5 in (140 × 216 mm)', width: 139.7, height: 215.9, desc: 'US Digest 5.5×8.5 Standard' },
+  { name: 'B5',          label: 'B5 (176 × 250 mm)',                  width: 176,   height: 250,   desc: 'Textbooks & Scientific Journals' },
+  { name: 'POCKET',      label: 'Pocket Book (110 × 178 mm)',         width: 110,   height: 178,   desc: 'Mass Market Paperback' },
+  { name: 'CUSTOM',      label: 'Custom Book Size...',                width: null,  height: null,  desc: 'Enter custom trim width & height', isCustom: true }
 ];
 
 const BINDING_STYLES = [
@@ -120,23 +140,53 @@ export default function ImpositionSection({
   const [hasFlaps, setHasFlaps] = useState(false);
   const [flapWidth, setFlapWidth] = useState(60); // mm
 
-  // ─── Sheet Dimensions ───────────────────────────────────────────────────
+  // ─── Sheet Dimensions (Raw Stock Paper) ─────────────────────────────────
   const [sheetPreset, setSheetPreset] = useState('23×36"');
   const [sheetWidth, setSheetWidth] = useState(584);
   const [sheetHeight, setSheetHeight] = useState(914);
   const [customSheet, setCustomSheet] = useState(false);
+
+  // ─── Book Dimensions (Finished Trim Size) ───────────────────────────────
+  const sourcePdfPageWidthMM = useMemo(() => {
+    if (analysisData?.firstPage?.width) {
+      return Math.round((analysisData.firstPage.width / 2.834645) * 10) / 10;
+    }
+    return 148;
+  }, [analysisData?.firstPage?.width]);
+
+  const sourcePdfPageHeightMM = useMemo(() => {
+    if (analysisData?.firstPage?.height) {
+      return Math.round((analysisData.firstPage.height / 2.834645) * 10) / 10;
+    }
+    return 210;
+  }, [analysisData?.firstPage?.height]);
+
+  const [bookPreset, setBookPreset] = useState('AUTO');
+  const [bookWidth, setBookWidth] = useState(148);
+  const [bookHeight, setBookHeight] = useState(210);
+  const [customBook, setCustomBook] = useState(false);
+
+  // Auto-sync Book Size when analysisData arrives (if bookPreset is AUTO)
+  useEffect(() => {
+    if (bookPreset === 'AUTO' && sourcePdfPageWidthMM && sourcePdfPageHeightMM) {
+      setBookWidth(sourcePdfPageWidthMM);
+      setBookHeight(sourcePdfPageHeightMM);
+    }
+  }, [bookPreset, sourcePdfPageWidthMM, sourcePdfPageHeightMM]);
 
   // ─── Sheet & Page Orientation ───────────────────────────────────────────
   const [sheetOrientation, setSheetOrientation] = useState('PORTRAIT'); // 'PORTRAIT' | 'LANDSCAPE'
   const [pageOrientation, setPageOrientation] = useState('AUTO'); // 'AUTO' | 'PORTRAIT' | 'LANDSCAPE'
   const [pageRotation, setPageRotation] = useState(0); // 0 | 90 | 180 | 270
 
-  // ─── Margins & Bleed (4-Sided) ──────────────────────────────────────────
+  // ─── Sheet Margins (Vertical & Horizontal + Advanced 4-Sided) ───────────
+  const [verticalMargin, setVerticalMargin] = useState(10);
+  const [horizontalMargin, setHorizontalMargin] = useState(10);
   const [marginTop, setMarginTop] = useState(10);
   const [marginBottom, setMarginBottom] = useState(10);
   const [marginLeft, setMarginLeft] = useState(10);
   const [marginRight, setMarginRight] = useState(10);
-  const [marginLinked, setMarginLinked] = useState(true);
+  const [showAdvancedMargins, setShowAdvancedMargins] = useState(false);
 
   const [bleedTop, setBleedTop] = useState(3);
   const [bleedBottom, setBleedBottom] = useState(3);
@@ -189,9 +239,53 @@ export default function ImpositionSection({
     return Math.max(1, Math.round(spine * 10) / 10);
   }, [bookLeaves, paperCaliper, hingeAllowance]);
 
-  // Handlers
+  // Prepress Fit Intelligence: Compare Sheet Printable Area vs Book Grid
+  const fitMetrics = useMemo(() => {
+    const sw = parseFloat(sheetWidth) || 0;
+    const sh = parseFloat(sheetHeight) || 0;
+    const ml = parseFloat(marginLeft) || 0;
+    const mr = parseFloat(marginRight) || 0;
+    const mt = parseFloat(marginTop) || 0;
+    const mb = parseFloat(marginBottom) || 0;
+    const gx = parseFloat(gutterX) || 0;
+    const gy = parseFloat(gutterY) || 0;
+    const c = Math.max(1, columns);
+    const r = Math.max(1, rows);
+
+    const printableW = Math.max(0, sw - ml - mr);
+    const printableH = Math.max(0, sh - mt - mb);
+
+    const slotW = Math.max(0, (printableW - gx * (c - 1)) / c);
+    const slotH = Math.max(0, (printableH - gy * (r - 1)) / r);
+
+    const targetW = parseFloat(bookWidth) || 0;
+    const targetH = parseFloat(bookHeight) || 0;
+
+    const fitsCleanly = slotW >= targetW && slotH >= targetH;
+    const deltaW = Math.round((slotW - targetW) * 10) / 10;
+    const deltaH = Math.round((slotH - targetH) * 10) / 10;
+
+    return {
+      printableW: Math.round(printableW * 10) / 10,
+      printableH: Math.round(printableH * 10) / 10,
+      slotW: Math.round(slotW * 10) / 10,
+      slotH: Math.round(slotH * 10) / 10,
+      targetW,
+      targetH,
+      fitsCleanly,
+      deltaW,
+      deltaH
+    };
+  }, [sheetWidth, sheetHeight, marginLeft, marginRight, marginTop, marginBottom, gutterX, gutterY, columns, rows, bookWidth, bookHeight]);
+
+  // Handlers for Sheet Size
   const handleSelectSheetPreset = (preset) => {
     setSheetPreset(preset.name);
+    if (preset.name === 'CUSTOM') {
+      setCustomSheet(true);
+      return;
+    }
+    setCustomSheet(false);
     let w = preset.width;
     let h = preset.height;
     if (sheetOrientation === 'LANDSCAPE' && w < h) {
@@ -201,7 +295,85 @@ export default function ImpositionSection({
     }
     setSheetWidth(w);
     setSheetHeight(h);
-    setCustomSheet(false);
+  };
+
+  const handleSheetWidthChange = (val) => {
+    const num = parseFloat(val) || 0;
+    setSheetWidth(num);
+    setSheetPreset('CUSTOM');
+    setCustomSheet(true);
+  };
+
+  const handleSheetHeightChange = (val) => {
+    const num = parseFloat(val) || 0;
+    setSheetHeight(num);
+    setSheetPreset('CUSTOM');
+    setCustomSheet(true);
+  };
+
+  // Handlers for Book Size
+  const handleSelectBookPreset = (presetName) => {
+    setBookPreset(presetName);
+    if (presetName === 'AUTO') {
+      setBookWidth(sourcePdfPageWidthMM);
+      setBookHeight(sourcePdfPageHeightMM);
+      setCustomBook(false);
+    } else if (presetName === 'CUSTOM') {
+      setCustomBook(true);
+    } else {
+      setCustomBook(false);
+      const p = BOOK_PRESETS.find(x => x.name === presetName);
+      if (p && p.width && p.height) {
+        setBookWidth(p.width);
+        setBookHeight(p.height);
+      }
+    }
+  };
+
+  const handleBookWidthChange = (val) => {
+    const num = parseFloat(val) || 0;
+    setBookWidth(num);
+    setBookPreset('CUSTOM');
+    setCustomBook(true);
+  };
+
+  const handleBookHeightChange = (val) => {
+    const num = parseFloat(val) || 0;
+    setBookHeight(num);
+    setBookPreset('CUSTOM');
+    setCustomBook(true);
+  };
+
+  // Handlers for Margins
+  const handleVerticalMarginChange = (val) => {
+    const v = Math.max(0, parseFloat(val) || 0);
+    setVerticalMargin(v);
+    setMarginTop(v);
+    setMarginBottom(v);
+  };
+
+  const handleHorizontalMarginChange = (val) => {
+    const v = Math.max(0, parseFloat(val) || 0);
+    setHorizontalMargin(v);
+    setMarginLeft(v);
+    setMarginRight(v);
+  };
+
+  const handleIndividualMarginChange = (side, val) => {
+    const v = Math.max(0, parseFloat(val) || 0);
+    if (side === 'top') {
+      setMarginTop(v);
+      if (v === marginBottom) setVerticalMargin(v);
+    } else if (side === 'bottom') {
+      setMarginBottom(v);
+      if (v === marginTop) setVerticalMargin(v);
+    } else if (side === 'left') {
+      setMarginLeft(v);
+      if (v === marginRight) setHorizontalMargin(v);
+    } else if (side === 'right') {
+      setMarginRight(v);
+      if (v === marginLeft) setHorizontalMargin(v);
+    }
   };
 
   const handleToggleSheetOrientation = (newOrientation) => {
@@ -218,15 +390,6 @@ export default function ImpositionSection({
   const handleSelectPageOrientation = (orient, rot = 0) => {
     setPageOrientation(orient);
     setPageRotation(rot);
-  };
-
-  const handleSetMargin = (side, value) => {
-    const v = parseFloat(value) || 0;
-    if (marginLinked) {
-      setMarginTop(v); setMarginBottom(v); setMarginLeft(v); setMarginRight(v);
-    } else {
-      ({ top: setMarginTop, bottom: setMarginBottom, left: setMarginLeft, right: setMarginRight }[side])(v);
-    }
   };
 
   const handleSetBleed = (side, value) => {
@@ -248,7 +411,16 @@ export default function ImpositionSection({
         width: parseFloat(sheetWidth),
         height: parseFloat(sheetHeight),
         unit: 'mm',
-        orientation: sheetOrientation
+        orientation: sheetOrientation,
+        preset: sheetPreset,
+        isCustom: sheetPreset === 'CUSTOM'
+      },
+      bookSize: {
+        width: parseFloat(bookWidth),
+        height: parseFloat(bookHeight),
+        unit: 'mm',
+        preset: bookPreset,
+        isCustom: bookPreset === 'CUSTOM'
       },
       layout: {
         pagesPerLayout: partMode === 'COVER' ? 4 : selectedLayout,
@@ -266,7 +438,9 @@ export default function ImpositionSection({
         top: parseFloat(marginTop || 0),
         bottom: parseFloat(marginBottom || 0),
         left: parseFloat(marginLeft || 0),
-        right: parseFloat(marginRight || 0)
+        right: parseFloat(marginRight || 0),
+        vertical: parseFloat(verticalMargin || 0),
+        horizontal: parseFloat(horizontalMargin || 0)
       },
       bleed: {
         top: parseFloat(bleedTop || 0),
@@ -624,18 +798,28 @@ export default function ImpositionSection({
             </div>
           )}
 
-          {/* ─── Press Sheet & Work Style Setup ───────────────────────────── */}
-          <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl space-y-4">
+          {/* ─── 1. Press Sheet Setup ─────────────────────────────────────── */}
+          <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl space-y-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Printer className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">Press Sheet & Machine Setup</span>
+                <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">1. Press Sheet (Paper Stock)</span>
               </div>
+              {sheetPreset === 'CUSTOM' && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-700">
+                  Custom Size
+                </span>
+              )}
             </div>
 
-            {/* Sheet Presets */}
+            {/* Sheet Presets Dropdown */}
             <div>
-              <label className="text-[11px] font-mono text-slate-400 block mb-1">Standard Press Sheet</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-mono text-slate-400">Sheet Stock Preset</label>
+                <span className="text-[10px] font-mono text-slate-500">
+                  {sheetWidth} × {sheetHeight} mm
+                </span>
+              </div>
               <select
                 value={sheetPreset}
                 onChange={(e) => {
@@ -645,43 +829,55 @@ export default function ImpositionSection({
                 className="w-full bg-[#10141D] border border-[#233045] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
               >
                 {SHEET_PRESETS.map((p) => (
-                  <option key={p.name} value={p.name}>{p.label}</option>
+                  <option key={p.name} value={p.name}>
+                    {p.label}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {/* Custom Sheet Dimensions */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Width (mm)</label>
-                <input
-                  type="number"
-                  value={sheetWidth}
-                  onChange={(e) => { setSheetWidth(parseFloat(e.target.value) || 0); setSheetPreset('Custom'); }}
-                  className="w-full bg-[#10141D] border border-[#233045] rounded-lg px-3 py-1.5 text-xs font-mono text-white"
-                />
+            {/* Custom Press Sheet Dimensions */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-mono text-slate-400 uppercase">Sheet Dimensions (mm)</label>
+                <span className="text-[10px] font-mono text-slate-500">
+                  {sheetPreset === 'CUSTOM' ? 'Custom dimensions active' : 'Edit to enter custom sheet'}
+                </span>
               </div>
-              <div>
-                <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Height (mm)</label>
-                <input
-                  type="number"
-                  value={sheetHeight}
-                  onChange={(e) => { setSheetHeight(parseFloat(e.target.value) || 0); setSheetPreset('Custom'); }}
-                  className="w-full bg-[#10141D] border border-[#233045] rounded-lg px-3 py-1.5 text-xs font-mono text-white"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">W:</span>
+                  <input
+                    type="number"
+                    value={sheetWidth}
+                    onChange={(e) => handleSheetWidthChange(e.target.value)}
+                    className="w-full bg-[#10141D] border border-[#233045] focus:border-cyan-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    placeholder="Width mm"
+                  />
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">H:</span>
+                  <input
+                    type="number"
+                    value={sheetHeight}
+                    onChange={(e) => handleSheetHeightChange(e.target.value)}
+                    className="w-full bg-[#10141D] border border-[#233045] focus:border-cyan-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    placeholder="Height mm"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Sheet Orientation Selector */}
             <div>
-              <label className="text-[11px] font-mono text-slate-400 block mb-1">Sheet Orientation (Press Feed)</label>
+              <label className="text-[11px] font-mono text-slate-400 block mb-1">Sheet Feed Orientation</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => handleToggleSheetOrientation('PORTRAIT')}
                   className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     sheetOrientation === 'PORTRAIT'
-                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50'
+                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white hover:border-slate-600'
                   }`}
                 >
@@ -693,13 +889,87 @@ export default function ImpositionSection({
                   onClick={() => handleToggleSheetOrientation('LANDSCAPE')}
                   className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     sheetOrientation === 'LANDSCAPE'
-                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50'
+                      ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white hover:border-slate-600'
                   }`}
                 >
                   <span className="text-sm">↔️</span>
                   <span>Landscape</span>
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── 2. Finished Book Size Setup ──────────────────────────────── */}
+          <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">2. Finished Book Size (Trim)</span>
+              </div>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                bookPreset === 'CUSTOM'
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
+                  : bookPreset === 'AUTO'
+                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-700'
+                  : 'bg-[#10141D] text-slate-400 border-[#233045]'
+              }`}>
+                {bookPreset === 'CUSTOM' ? 'Custom Trim' : bookPreset === 'AUTO' ? 'Auto-Detect' : bookPreset}
+              </span>
+            </div>
+
+            {/* Book Presets Dropdown */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-mono text-slate-400">Standard Book Trim Preset</label>
+                <span className="text-[10px] font-mono text-emerald-400 font-semibold">
+                  {bookWidth} × {bookHeight} mm
+                </span>
+              </div>
+              <select
+                value={bookPreset}
+                onChange={(e) => handleSelectBookPreset(e.target.value)}
+                className="w-full bg-[#10141D] border border-[#233045] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
+              >
+                {BOOK_PRESETS.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Custom Book Trim Dimensions */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-mono text-slate-400 uppercase">Trim Dimensions (mm)</label>
+                <span className="text-[10px] font-mono text-slate-500">
+                  {bookPreset === 'CUSTOM' ? 'Custom trim active' : 'Edit to enter custom size'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">W:</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={bookWidth}
+                    onChange={(e) => handleBookWidthChange(e.target.value)}
+                    className="w-full bg-[#10141D] border border-[#233045] focus:border-emerald-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    placeholder="Width mm"
+                  />
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">H:</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={bookHeight}
+                    onChange={(e) => handleBookHeightChange(e.target.value)}
+                    className="w-full bg-[#10141D] border border-[#233045] focus:border-emerald-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    placeholder="Height mm"
+                  />
+                </div>
               </div>
             </div>
 
@@ -788,40 +1058,156 @@ export default function ImpositionSection({
               </div>
             </div>
 
-            {/* Work Style Selection */}
-            <div>
-              <label className="text-[11px] font-mono text-slate-400 block mb-1">Work Style</label>
-              <select
-                value={workStyle}
-                onChange={(e) => setWorkStyle(e.target.value)}
-                className="w-full bg-[#10141D] border border-[#233045] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+            {/* Live Prepress Fit Intelligence Card */}
+            <div className="p-3 rounded-xl bg-[#0D121B] border border-[#1E293B] space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-slate-400">Grid Slot Capacity ({columns}×{rows}):</span>
+                <span className="text-cyan-300 font-bold">{fitMetrics.slotW} × {fitMetrics.slotH} mm</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-slate-400">Target Book Trim:</span>
+                <span className="text-emerald-300 font-bold">{bookWidth} × {bookHeight} mm</span>
+              </div>
+              <div className={`pt-1 text-[10px] font-mono border-t border-[#1E293B] ${
+                fitMetrics.fitsCleanly ? 'text-emerald-400' : 'text-amber-400'
+              }`}>
+                {fitMetrics.fitsCleanly
+                  ? `✓ Fits cleanly on press sheet (+${fitMetrics.deltaW}mm W, +${fitMetrics.deltaH}mm H margin allowance).`
+                  : `⚠️ Grid slot is smaller than book trim (${Math.abs(fitMetrics.deltaW)}mm W / ${Math.abs(fitMetrics.deltaH)}mm H). Prepress engine will scale content to fit.`}
+              </div>
+            </div>
+          </div>
+
+          {/* ─── 3. Margins & Machine Press Setup ──────────────────────────── */}
+          <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">3. Margins & Press Setup</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedMargins(!showAdvancedMargins)}
+                className="text-[10px] font-mono text-cyan-400 hover:text-cyan-200 flex items-center gap-1 transition-all"
               >
-                {WORK_STYLES.map((ws) => (
-                  <option key={ws.value} value={ws.value}>{ws.label}</option>
-                ))}
-              </select>
+                <Settings2 className="w-3 h-3" />
+                <span>{showAdvancedMargins ? 'Hide 4-Sided' : 'Fine-Tune 4 Sides'}</span>
+              </button>
             </div>
 
-            {/* Margins & Bleed Quick Sliders */}
-            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-[#1E293B]">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-mono text-slate-400">Sheet Margins</span>
-                  <span className="text-[11px] font-mono text-cyan-300 font-bold">{marginTop} mm</span>
+            {/* Vertical & Horizontal Margins */}
+            <div className="space-y-3">
+              {/* Vertical Margin (Top / Bottom) */}
+              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-mono text-slate-300 flex items-center gap-1.5 font-bold">
+                    <MoveVertical className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Vertical Margin (Top & Bottom)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={verticalMargin}
+                      onChange={(e) => handleVerticalMarginChange(e.target.value)}
+                      className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                    />
+                    <span className="text-[10px] font-mono text-slate-500">mm</span>
+                  </div>
                 </div>
                 <input
                   type="range"
                   min="0"
-                  max="30"
-                  value={marginTop}
-                  onChange={(e) => handleSetMargin('all', e.target.value)}
+                  max="50"
+                  value={verticalMargin}
+                  onChange={(e) => handleVerticalMarginChange(e.target.value)}
                   className="w-full accent-cyan-400"
                 />
               </div>
 
+              {/* Horizontal Margin (Left / Right) */}
+              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-mono text-slate-300 flex items-center gap-1.5 font-bold">
+                    <MoveHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Horizontal Margin (Left & Right / Grippers)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={horizontalMargin}
+                      onChange={(e) => handleHorizontalMarginChange(e.target.value)}
+                      className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                    />
+                    <span className="text-[10px] font-mono text-slate-500">mm</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={horizontalMargin}
+                  onChange={(e) => handleHorizontalMarginChange(e.target.value)}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+            </div>
+
+            {/* Advanced 4-Sided Fine Tuning (Collapsible) */}
+            {showAdvancedMargins && (
+              <div className="p-3 rounded-xl bg-[#0D121B] border border-cyan-900/50 space-y-2">
+                <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold block">
+                  Individual 4-Sided Machine Margin Adjustments
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Top (Gripper Lead Edge)</label>
+                    <input
+                      type="number"
+                      value={marginTop}
+                      onChange={(e) => handleIndividualMarginChange('top', e.target.value)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Bottom (Tail Edge)</label>
+                    <input
+                      type="number"
+                      value={marginBottom}
+                      onChange={(e) => handleIndividualMarginChange('bottom', e.target.value)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Left (Side Guide 1)</label>
+                    <input
+                      type="number"
+                      value={marginLeft}
+                      onChange={(e) => handleIndividualMarginChange('left', e.target.value)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Right (Side Guide 2)</label>
+                    <input
+                      type="number"
+                      value={marginRight}
+                      onChange={(e) => handleIndividualMarginChange('right', e.target.value)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bleed & Work Style */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#1E293B]">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-mono text-slate-400">Bleed</span>
+                  <span className="text-[11px] font-mono text-slate-400">Bleed (Trim Box)</span>
                   <span className="text-[11px] font-mono text-cyan-300 font-bold">{bleedTop} mm</span>
                 </div>
                 <input
@@ -832,6 +1218,19 @@ export default function ImpositionSection({
                   onChange={(e) => handleSetBleed('all', e.target.value)}
                   className="w-full accent-cyan-400"
                 />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-mono text-slate-400 block mb-1">Work Style</label>
+                <select
+                  value={workStyle}
+                  onChange={(e) => setWorkStyle(e.target.value)}
+                  className="w-full bg-[#10141D] border border-[#233045] rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                >
+                  {WORK_STYLES.map((ws) => (
+                    <option key={ws.value} value={ws.value}>{ws.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
@@ -948,6 +1347,9 @@ export default function ImpositionSection({
             thumbnailsProgress={thumbnailsProgress}
             pageRotation={pageRotation}
             pageOrientation={pageOrientation}
+            bookWidth={parseFloat(bookWidth)}
+            bookHeight={parseFloat(bookHeight)}
+            bookPreset={bookPreset}
             coverParams={{
               spineWidth: calculatedSpine,
               flapWidth,

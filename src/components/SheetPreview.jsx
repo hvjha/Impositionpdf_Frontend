@@ -217,6 +217,9 @@ export default function SheetPreview({
   thumbnailsProgress = 0,
   pageRotation = 0,
   pageOrientation = 'AUTO',
+  bookWidth = null,
+  bookHeight = null,
+  bookPreset = null,
   // Cover studio parameters
   coverParams = {
     spineWidth: 5.3,
@@ -432,13 +435,19 @@ export default function SheetPreview({
               Wraparound Cover Spread ({coverParams?.spineWidth?.toFixed(1) || '5.3'}mm Spine)
             </span>
           ) : (
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 flex-wrap">
               <Layers className="w-3.5 h-3.5 text-cyan-400" />
               <strong className="text-cyan-300">Signature {(parseInt(sheetIndex, 10) || 0) + 1} of {totalSignatures}</strong>
               <span className="text-slate-500">•</span>
               <span>Pages {currentSigStart}–{currentSigEnd}</span>
               <span className="text-slate-500">•</span>
               <span className="text-slate-400">{layoutPagesCount}PP {impositionMode}</span>
+              {bookWidth && bookHeight ? (
+                <>
+                  <span className="text-slate-500">•</span>
+                  <span className="text-emerald-400 font-semibold">Book Trim: {bookWidth} × {bookHeight} mm</span>
+                </>
+              ) : null}
             </span>
           )}
         </div>
@@ -988,7 +997,7 @@ export default function SheetPreview({
           >
             {partMode === 'COVER'
               ? `COVER SPREAD | ${activeSide === 'FRONT' ? 'OUTSIDE' : 'INSIDE'} | ${sw} × ${sh} mm`
-              : `SIG ${(parseInt(sheetIndex, 10) || 0) + 1}/${totalSignatures} | ${activeSide} | PAGES ${currentSigStart}–${currentSigEnd} | ${layoutPagesCount}PP ${impositionMode} | ${sw} × ${sh} mm`}
+              : `SIG ${(parseInt(sheetIndex, 10) || 0) + 1}/${totalSignatures} | ${activeSide} | PAGES ${currentSigStart}–${currentSigEnd} | ${layoutPagesCount}PP ${impositionMode} | SHEET ${sw} × ${sh} mm${bookWidth && bookHeight ? ` | BOOK TRIM ${bookWidth} × ${bookHeight} mm` : ''}`}
           </text>
         </svg>
       </div>
