@@ -25,7 +25,10 @@ import {
   MoveVertical,
   Maximize2,
   Settings2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Camera,
+  Link2,
+  Unlink
 } from 'lucide-react';
 import { imposePdfJob, getSourcePdfUrl, getOutputPdfUrl } from '../services/api';
 import usePdfThumbnails from '../hooks/usePdfThumbnails';
@@ -194,9 +197,10 @@ export default function ImpositionSection({
   const [bleedRight, setBleedRight] = useState(3);
   const [bleedLinked, setBleedLinked] = useState(true);
 
-  // ─── Gutters ────────────────────────────────────────────────────────────
+  // ─── Gutters / Cut Spacing ─────────────────────────────────────────────
   const [gutterX, setGutterX] = useState(4);
   const [gutterY, setGutterY] = useState(4);
+  const [guttersLinked, setGuttersLinked] = useState(true);
 
   // ─── Prepress Production Marks ──────────────────────────────────────────
   const [cropMarks, setCropMarks] = useState(true);
@@ -204,6 +208,7 @@ export default function ImpositionSection({
   const [cropMarkOffset, setCropMarkOffset] = useState(3);
   const [registrationMarks, setRegistrationMarks] = useState(true);
   const [colorBars, setColorBars] = useState(true);
+  const [cameraMarks, setCameraMarks] = useState(true);
   const [jobSlug, setJobSlug] = useState(true);
 
   // ─── Work Style ─────────────────────────────────────────────────────────
@@ -376,6 +381,32 @@ export default function ImpositionSection({
     }
   };
 
+  // Handlers for Cut Gutters (Padding between pages)
+  const handleGutterXChange = (val) => {
+    const v = Math.max(0, parseFloat(val) || 0);
+    setGutterX(v);
+    if (guttersLinked) setGutterY(v);
+  };
+
+  const handleGutterYChange = (val) => {
+    const v = Math.max(0, parseFloat(val) || 0);
+    setGutterY(v);
+    if (guttersLinked) setGutterX(v);
+  };
+
+  const handleToggleGuttersLinked = () => {
+    const nextLinked = !guttersLinked;
+    setGuttersLinked(nextLinked);
+    if (nextLinked) {
+      setGutterY(gutterX);
+    }
+  };
+
+  const handleQuickGutterPreset = (presetMm) => {
+    setGutterX(presetMm);
+    setGutterY(presetMm);
+  };
+
   const handleToggleSheetOrientation = (newOrientation) => {
     if (newOrientation === sheetOrientation) return;
     setSheetOrientation(newOrientation);
@@ -462,7 +493,10 @@ export default function ImpositionSection({
       marks: {
         crop: cropMarks,
         registrationMarks,
+        registration: registrationMarks,
         colorBars,
+        colorBar: colorBars,
+        cameraMarks,
         jobSlug,
         collatingMarks: partMode === 'TEXT' ? collatingMarks : false
       },
@@ -837,35 +871,79 @@ export default function ImpositionSection({
             </div>
 
             {/* Custom Press Sheet Dimensions */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase">Sheet Dimensions (mm)</label>
-                <span className="text-[10px] font-mono text-slate-500">
-                  {sheetPreset === 'CUSTOM' ? 'Custom dimensions active' : 'Edit to enter custom sheet'}
-                </span>
+            <div className={`p-2.5 rounded-xl border transition-all ${
+              sheetPreset === 'CUSTOM' ? 'bg-cyan-950/40 border-cyan-500/70 shadow-sm' : 'bg-[#10141D] border-[#233045]'
+            }`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-mono text-slate-300 font-bold uppercase flex items-center gap-1.5">
+                  <span>Custom Sheet Dimensions</span>
+                  {sheetPreset === 'CUSTOM' && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500 text-black font-bold">Custom Active</span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const temp = sheetWidth;
+                    setSheetWidth(sheetHeight);
+                    setSheetHeight(temp);
+                    setSheetPreset('CUSTOM');
+                  }}
+                  className="text-[10px] font-mono text-cyan-400 hover:text-cyan-200 underline cursor-pointer"
+                  title="Swap Width and Height"
+                >
+                  Swap W↔H
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
                   <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">W:</span>
                   <input
                     type="number"
+                    step="0.5"
                     value={sheetWidth}
                     onChange={(e) => handleSheetWidthChange(e.target.value)}
-                    className="w-full bg-[#10141D] border border-[#233045] focus:border-cyan-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    className="w-full bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded-lg pl-7 pr-7 py-1.5 text-xs font-mono text-white"
                     placeholder="Width mm"
                   />
+                  <span className="absolute right-2 top-2 text-[9px] font-mono text-slate-500">mm</span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">H:</span>
                   <input
                     type="number"
+                    step="0.5"
                     value={sheetHeight}
                     onChange={(e) => handleSheetHeightChange(e.target.value)}
-                    className="w-full bg-[#10141D] border border-[#233045] focus:border-cyan-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    className="w-full bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded-lg pl-7 pr-7 py-1.5 text-xs font-mono text-white"
                     placeholder="Height mm"
                   />
+                  <span className="absolute right-2 top-2 text-[9px] font-mono text-slate-500">mm</span>
                 </div>
               </div>
+              {sheetPreset === 'CUSTOM' && (
+                <div className="mt-2 pt-2 border-t border-[#1E293B] flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] font-mono text-slate-500">Quick Sizes:</span>
+                  {[
+                    { label: 'SRA3 320×450', w: 320, h: 450 },
+                    { label: 'B2 500×707', w: 500, h: 707 },
+                    { label: '23×36" (584×914)', w: 584, h: 914 },
+                    { label: '19×25" (483×635)', w: 483, h: 635 }
+                  ].map(sz => (
+                    <button
+                      key={sz.label}
+                      type="button"
+                      onClick={() => {
+                        setSheetWidth(sz.w);
+                        setSheetHeight(sz.h);
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-[#141C2A] hover:bg-[#1E293B] text-cyan-300 text-[9px] font-mono border border-[#233045] transition-all"
+                    >
+                      {sz.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Sheet Orientation Selector */}
@@ -940,12 +1018,29 @@ export default function ImpositionSection({
             </div>
 
             {/* Custom Book Trim Dimensions */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase">Trim Dimensions (mm)</label>
-                <span className="text-[10px] font-mono text-slate-500">
-                  {bookPreset === 'CUSTOM' ? 'Custom trim active' : 'Edit to enter custom size'}
-                </span>
+            <div className={`p-2.5 rounded-xl border transition-all ${
+              bookPreset === 'CUSTOM' ? 'bg-emerald-950/40 border-emerald-500/70 shadow-sm' : 'bg-[#10141D] border-[#233045]'
+            }`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] font-mono text-slate-300 font-bold uppercase flex items-center gap-1.5">
+                  <span>Custom Trim Dimensions</span>
+                  {bookPreset === 'CUSTOM' && (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500 text-black font-bold">Custom Active</span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const temp = bookWidth;
+                    setBookWidth(bookHeight);
+                    setBookHeight(temp);
+                    setBookPreset('CUSTOM');
+                  }}
+                  className="text-[10px] font-mono text-emerald-400 hover:text-emerald-200 underline cursor-pointer"
+                  title="Swap Width and Height"
+                >
+                  Swap W↔H
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
@@ -955,9 +1050,10 @@ export default function ImpositionSection({
                     step="0.5"
                     value={bookWidth}
                     onChange={(e) => handleBookWidthChange(e.target.value)}
-                    className="w-full bg-[#10141D] border border-[#233045] focus:border-emerald-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    className="w-full bg-[#141C2A] border border-[#233045] focus:border-emerald-500 rounded-lg pl-7 pr-7 py-1.5 text-xs font-mono text-white"
                     placeholder="Width mm"
                   />
+                  <span className="absolute right-2 top-2 text-[9px] font-mono text-slate-500">mm</span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-2.5 top-2 text-[10px] font-mono text-slate-500">H:</span>
@@ -966,11 +1062,35 @@ export default function ImpositionSection({
                     step="0.5"
                     value={bookHeight}
                     onChange={(e) => handleBookHeightChange(e.target.value)}
-                    className="w-full bg-[#10141D] border border-[#233045] focus:border-emerald-500 rounded-lg pl-7 pr-3 py-1.5 text-xs font-mono text-white"
+                    className="w-full bg-[#141C2A] border border-[#233045] focus:border-emerald-500 rounded-lg pl-7 pr-7 py-1.5 text-xs font-mono text-white"
                     placeholder="Height mm"
                   />
+                  <span className="absolute right-2 top-2 text-[9px] font-mono text-slate-500">mm</span>
                 </div>
               </div>
+              {bookPreset === 'CUSTOM' && (
+                <div className="mt-2 pt-2 border-t border-[#1E293B] flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] font-mono text-slate-500">Quick Trims:</span>
+                  {[
+                    { label: 'A5 (148×210)', w: 148, h: 210 },
+                    { label: 'US Trade 6×9"', w: 152.4, h: 228.6 },
+                    { label: 'Demy 8vo (138×216)', w: 138, h: 216 },
+                    { label: 'Square 210×210', w: 210, h: 210 }
+                  ].map(sz => (
+                    <button
+                      key={sz.label}
+                      type="button"
+                      onClick={() => {
+                        setBookWidth(sz.w);
+                        setBookHeight(sz.h);
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-[#141C2A] hover:bg-[#1E293B] text-emerald-300 text-[9px] font-mono border border-[#233045] transition-all"
+                    >
+                      {sz.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Page Orientation & Rotation Selector */}
@@ -1203,6 +1323,122 @@ export default function ImpositionSection({
               </div>
             )}
 
+            {/* Cut Spacing / Padding around each cut item (Gutters) */}
+            <div className="p-3 rounded-xl bg-[#0D121B] border border-cyan-800/40 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Scissors className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-xs font-mono text-cyan-300 font-bold uppercase">
+                    Cut Spacing & Padding (Gutters)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleGuttersLinked}
+                  className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                    guttersLinked
+                      ? 'bg-cyan-950 border-cyan-600 text-cyan-300 font-bold'
+                      : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                  }`}
+                  title={guttersLinked ? 'Cut gaps are linked together' : 'Cut gaps are independent'}
+                >
+                  {guttersLinked ? <Link2 className="w-3 h-3 text-cyan-400" /> : <Unlink className="w-3 h-3 text-slate-500" />}
+                  <span>{guttersLinked ? 'Linked Gaps' : 'Independent'}</span>
+                </button>
+              </div>
+
+              <p className="text-[10px] text-slate-400 m-0">
+                Padding & gutter spacing between individual cuts on the {columns}×{rows} grid ({selectedLayout}PP signature / {columns * rows}-up press sheet).
+              </p>
+
+              {/* Horizontal Gutter (Column Cut Gap) */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono text-slate-300 flex items-center gap-1">
+                    <MoveHorizontal className="w-3 h-3 text-cyan-400" />
+                    <span>Horizontal Cut Gap (Cols):</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="40"
+                      value={gutterX}
+                      onChange={(e) => handleGutterXChange(e.target.value)}
+                      className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                    />
+                    <span className="text-[10px] font-mono text-slate-500">mm</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="25"
+                  step="0.5"
+                  value={gutterX}
+                  onChange={(e) => handleGutterXChange(e.target.value)}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+
+              {/* Vertical Gutter (Row Cut Gap) */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono text-slate-300 flex items-center gap-1">
+                    <MoveVertical className="w-3 h-3 text-cyan-400" />
+                    <span>Vertical Cut Gap (Rows / Spine):</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="40"
+                      value={gutterY}
+                      onChange={(e) => handleGutterYChange(e.target.value)}
+                      className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                    />
+                    <span className="text-[10px] font-mono text-slate-500">mm</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="25"
+                  step="0.5"
+                  value={gutterY}
+                  onChange={(e) => handleGutterYChange(e.target.value)}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+
+              {/* Quick Gutter Presets */}
+              <div className="pt-1.5 border-t border-[#1E293B] flex items-center gap-1.5 flex-wrap">
+                <span className="text-[9px] font-mono text-slate-500">Gap Presets:</span>
+                {[
+                  { label: '0 mm (Butt Cut)', val: 0 },
+                  { label: '3 mm (Double Cut)', val: 3 },
+                  { label: '4 mm (Standard)', val: 4 },
+                  { label: '6 mm', val: 6 },
+                  { label: '10 mm', val: 10 }
+                ].map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => handleQuickGutterPreset(p.val)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-all cursor-pointer ${
+                      gutterX === p.val && gutterY === p.val
+                        ? 'bg-cyan-500 text-black font-bold'
+                        : 'bg-[#141C2A] text-slate-400 hover:text-white border border-[#233045]'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Bleed & Work Style */}
             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#1E293B]">
               <div>
@@ -1246,17 +1482,29 @@ export default function ImpositionSection({
                 <span>Crop Marks</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={cameraMarks} onChange={(e) => setCameraMarks(e.target.checked)} className="rounded accent-cyan-400" />
+                <span className="flex items-center gap-1 text-cyan-300 font-semibold">
+                  <Camera className="w-3.5 h-3.5" /> Camera Marks
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={registrationMarks} onChange={(e) => setRegistrationMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                <span>Registration Marks</span>
+                <span>Registration Targets</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={colorBars} onChange={(e) => setColorBars(e.target.checked)} className="rounded accent-cyan-400" />
-                <span>CMYK Color Bars</span>
+                <span className="text-amber-300 font-semibold">CMYK Color Bars</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={jobSlug} onChange={(e) => setJobSlug(e.target.checked)} className="rounded accent-cyan-400" />
                 <span>Job Slug Line</span>
               </label>
+              {partMode === 'TEXT' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={collatingMarks} onChange={(e) => setCollatingMarks(e.target.checked)} className="rounded accent-cyan-400" />
+                  <span>Collating Marks</span>
+                </label>
+              )}
             </div>
           </div>
 
@@ -1336,6 +1584,7 @@ export default function ImpositionSection({
             cropMarkOffset={cropMarkOffset}
             registrationMarks={registrationMarks}
             colorBars={colorBars}
+            cameraMarks={cameraMarks}
             workStyle={workStyle}
             impositionMode={bindingStyle}
             selectedLayout={selectedLayout}

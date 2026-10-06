@@ -185,6 +185,25 @@ function ColorBar({ x, y, width, height }) {
   );
 }
 
+function CameraMark({ cx, cy, radius = 2.4 }) {
+  const guideRadius = radius * 1.8;
+  return (
+    <g>
+      {/* High-contrast quiet backing circle */}
+      <circle cx={cx} cy={cy} r={guideRadius + 1.2} fill="#FFFFFF" stroke="none" />
+      {/* Outer alignment guide ring */}
+      <circle cx={cx} cy={cy} r={guideRadius} fill="none" stroke="#000000" strokeWidth="0.25" />
+      {/* Solid black camera fiducial dot */}
+      <circle cx={cx} cy={cy} r={radius} fill="#000000" stroke="none" />
+      {/* Optical guide cross ticks */}
+      <line x1={cx - guideRadius - 1.2} y1={cy} x2={cx - radius - 0.3} y2={cy} stroke="#000000" strokeWidth="0.2" />
+      <line x1={cx + radius + 0.3} y1={cy} x2={cx + guideRadius + 1.2} y2={cy} stroke="#000000" strokeWidth="0.2" />
+      <line x1={cx} y1={cy - guideRadius - 1.2} x2={cx} y2={cy - radius - 0.3} stroke="#000000" strokeWidth="0.2" />
+      <line x1={cx} y1={cy + radius + 0.3} x2={cx} y2={cy + guideRadius + 1.2} stroke="#000000" strokeWidth="0.2" />
+    </g>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
@@ -206,6 +225,7 @@ export default function SheetPreview({
   cropMarkOffset = 3,
   registrationMarks = true,
   colorBars = true,
+  cameraMarks = true,
   workStyle = 'SHEETWISE',
   impositionMode = 'PERFECT_BINDING',
   selectedLayout = 16,
@@ -975,13 +995,37 @@ export default function SheetPreview({
             </g>
           )}
 
-          {/* Registration marks */}
+          {/* Registration marks (Plate alignment crosshairs) */}
           {registrationMarks && (
             <>
-              <RegistrationMark cx={pad + 6} cy={pad + 6} size={3} />
-              <RegistrationMark cx={pad + sw - 6} cy={pad + 6} size={3} />
-              <RegistrationMark cx={pad + 6} cy={pad + sh - 6} size={3} />
-              <RegistrationMark cx={pad + sw - 6} cy={pad + sh - 6} size={3} />
+              <RegistrationMark cx={pad + sw / 2} cy={pad + 5} size={3} />
+              <RegistrationMark cx={pad + sw / 2} cy={pad + sh - 5} size={3} />
+              <RegistrationMark cx={pad + 5} cy={pad + sh / 2} size={3} />
+              <RegistrationMark cx={pad + sw - 5} cy={pad + sh / 2} size={3} />
+            </>
+          )}
+
+          {/* Optical Camera Marks (Digital Cut & Register Fiducials) */}
+          {cameraMarks && (
+            <>
+              {/* 4 Corners */}
+              <CameraMark cx={pad + 7} cy={pad + 7} radius={2.2} />
+              <CameraMark cx={pad + sw - 7} cy={pad + 7} radius={2.2} />
+              <CameraMark cx={pad + 7} cy={pad + sh - 7} radius={2.2} />
+              <CameraMark cx={pad + sw - 7} cy={pad + sh - 7} radius={2.2} />
+              {/* Mid-edge fiducials */}
+              {sw > 250 && (
+                <>
+                  <CameraMark cx={pad + sw / 2} cy={pad + 7} radius={2.2} />
+                  <CameraMark cx={pad + sw / 2} cy={pad + sh - 7} radius={2.2} />
+                </>
+              )}
+              {sh > 250 && (
+                <>
+                  <CameraMark cx={pad + 7} cy={pad + sh / 2} radius={2.2} />
+                  <CameraMark cx={pad + sw - 7} cy={pad + sh / 2} radius={2.2} />
+                </>
+              )}
             </>
           )}
 
