@@ -185,21 +185,37 @@ function ColorBar({ x, y, width, height }) {
   );
 }
 
-function CameraMark({ cx, cy, radius = 2.4 }) {
+function CameraMark({ cx, cy, radius = 2.4, style = 'RING' }) {
   const guideRadius = radius * 1.8;
+  const isRingOrTarget = style === 'RING' || style === 'TARGET';
+  const isTarget = style === 'TARGET';
+
   return (
     <g>
       {/* High-contrast quiet backing circle */}
       <circle cx={cx} cy={cy} r={guideRadius + 1.2} fill="#FFFFFF" stroke="none" />
       {/* Outer alignment guide ring */}
-      <circle cx={cx} cy={cy} r={guideRadius} fill="none" stroke="#000000" strokeWidth="0.25" />
+      {isRingOrTarget && (
+        <circle cx={cx} cy={cy} r={guideRadius} fill="none" stroke="#000000" strokeWidth="0.25" />
+      )}
       {/* Solid black camera fiducial dot */}
       <circle cx={cx} cy={cy} r={radius} fill="#000000" stroke="none" />
       {/* Optical guide cross ticks */}
-      <line x1={cx - guideRadius - 1.2} y1={cy} x2={cx - radius - 0.3} y2={cy} stroke="#000000" strokeWidth="0.2" />
-      <line x1={cx + radius + 0.3} y1={cy} x2={cx + guideRadius + 1.2} y2={cy} stroke="#000000" strokeWidth="0.2" />
-      <line x1={cx} y1={cy - guideRadius - 1.2} x2={cx} y2={cy - radius - 0.3} stroke="#000000" strokeWidth="0.2" />
-      <line x1={cx} y1={cy + radius + 0.3} x2={cx} y2={cy + guideRadius + 1.2} stroke="#000000" strokeWidth="0.2" />
+      {isRingOrTarget && (
+        <>
+          <line x1={cx - guideRadius - 1.2} y1={cy} x2={cx - radius - 0.3} y2={cy} stroke="#000000" strokeWidth="0.2" />
+          <line x1={cx + radius + 0.3} y1={cy} x2={cx + guideRadius + 1.2} y2={cy} stroke="#000000" strokeWidth="0.2" />
+          <line x1={cx} y1={cy - guideRadius - 1.2} x2={cx} y2={cy - radius - 0.3} stroke="#000000" strokeWidth="0.2" />
+          <line x1={cx} y1={cy + radius + 0.3} x2={cx} y2={cy + guideRadius + 1.2} stroke="#000000" strokeWidth="0.2" />
+        </>
+      )}
+      {/* Extended crosshair for TARGET style */}
+      {isTarget && (
+        <>
+          <line x1={cx - guideRadius * 1.5} y1={cy} x2={cx + guideRadius * 1.5} y2={cy} stroke="#000000" strokeWidth="0.15" strokeDasharray="0.6 0.6" />
+          <line x1={cx} y1={cy - guideRadius * 1.5} x2={cx} y2={cy + guideRadius * 1.5} stroke="#000000" strokeWidth="0.15" strokeDasharray="0.6 0.6" />
+        </>
+      )}
     </g>
   );
 }
@@ -226,6 +242,10 @@ export default function SheetPreview({
   registrationMarks = true,
   colorBars = true,
   cameraMarks = true,
+  cameraMarkSize = 5,
+  cameraMarkOffset = 8,
+  cameraMarkStyle = 'RING',
+  cameraMarkPositions = 'CORNERS_AND_EDGES',
   workStyle = 'SHEETWISE',
   impositionMode = 'PERFECT_BINDING',
   selectedLayout = 16,
@@ -1006,28 +1026,30 @@ export default function SheetPreview({
           )}
 
           {/* Optical Camera Marks (Digital Cut & Register Fiducials) */}
-          {cameraMarks && (
-            <>
-              {/* 4 Corners */}
-              <CameraMark cx={pad + 7} cy={pad + 7} radius={2.2} />
-              <CameraMark cx={pad + sw - 7} cy={pad + 7} radius={2.2} />
-              <CameraMark cx={pad + 7} cy={pad + sh - 7} radius={2.2} />
-              <CameraMark cx={pad + sw - 7} cy={pad + sh - 7} radius={2.2} />
-              {/* Mid-edge fiducials */}
-              {sw > 250 && (
-                <>
-                  <CameraMark cx={pad + sw / 2} cy={pad + 7} radius={2.2} />
-                  <CameraMark cx={pad + sw / 2} cy={pad + sh - 7} radius={2.2} />
-                </>
-              )}
-              {sh > 250 && (
-                <>
-                  <CameraMark cx={pad + 7} cy={pad + sh / 2} radius={2.2} />
-                  <CameraMark cx={pad + sw - 7} cy={pad + sh / 2} radius={2.2} />
-                </>
-              )}
-            </>
-          )}
+          {cameraMarks && (() => {
+            const camRad = (parseFloat(cameraMarkSize) || 5) / 2;
+            const camOff = Math.max(3, parseFloat(cameraMarkOffset) || 8);
+            const camStyle = cameraMarkStyle || 'RING';
+            const showEdges = cameraMarkPositions !== 'CORNERS';
+            return (
+              <>
+                {/* 4 Corners */}
+                <CameraMark cx={pad + camOff} cy={pad + camOff} radius={camRad} style={camStyle} />
+                <CameraMark cx={pad + sw - camOff} cy={pad + camOff} radius={camRad} style={camStyle} />
+                <CameraMark cx={pad + camOff} cy={pad + sh - camOff} radius={camRad} style={camStyle} />
+                <CameraMark cx={pad + sw - camOff} cy={pad + sh - camOff} radius={camRad} style={camStyle} />
+                {/* Mid-edge fiducials */}
+                {showEdges && (
+                  <>
+                    <CameraMark cx={pad + sw / 2} cy={pad + camOff} radius={camRad} style={camStyle} />
+                    <CameraMark cx={pad + sw / 2} cy={pad + sh - camOff} radius={camRad} style={camStyle} />
+                    <CameraMark cx={pad + camOff} cy={pad + sh / 2} radius={camRad} style={camStyle} />
+                    <CameraMark cx={pad + sw - camOff} cy={pad + sh / 2} radius={camRad} style={camStyle} />
+                  </>
+                )}
+              </>
+            );
+          })()}
 
           {/* Prepress Sheet Slug Line */}
           <text

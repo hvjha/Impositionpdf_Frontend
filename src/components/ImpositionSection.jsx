@@ -209,6 +209,11 @@ export default function ImpositionSection({
   const [registrationMarks, setRegistrationMarks] = useState(true);
   const [colorBars, setColorBars] = useState(true);
   const [cameraMarks, setCameraMarks] = useState(true);
+  const [cameraMarkSize, setCameraMarkSize] = useState(5); // mm diameter
+  const [cameraMarkOffset, setCameraMarkOffset] = useState(8); // mm sheet inset
+  const [cameraMarkStyle, setCameraMarkStyle] = useState('RING'); // 'RING' | 'SOLID' | 'TARGET'
+  const [cameraMarkPositions, setCameraMarkPositions] = useState('CORNERS_AND_EDGES'); // 'CORNERS_AND_EDGES' | 'CORNERS'
+  const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [jobSlug, setJobSlug] = useState(true);
 
   // ─── Work Style ─────────────────────────────────────────────────────────
@@ -496,7 +501,17 @@ export default function ImpositionSection({
         registration: registrationMarks,
         colorBars,
         colorBar: colorBars,
-        cameraMarks,
+        cameraMarks: cameraMarks ? {
+          enabled: true,
+          size: parseFloat(cameraMarkSize) || 5,
+          offset: parseFloat(cameraMarkOffset) || 8,
+          style: cameraMarkStyle,
+          positions: cameraMarkPositions
+        } : false,
+        cameraMarkSize: parseFloat(cameraMarkSize) || 5,
+        cameraMarkOffset: parseFloat(cameraMarkOffset) || 8,
+        cameraMarkStyle,
+        cameraMarkPositions,
         jobSlug,
         collatingMarks: partMode === 'TEXT' ? collatingMarks : false
       },
@@ -1473,9 +1488,27 @@ export default function ImpositionSection({
 
           {/* ─── Production Marks Checkboxes ──────────────────────────────── */}
           <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl">
-            <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider block mb-2.5">
-              Production Marks
-            </span>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">
+                Production Marks
+              </span>
+              {cameraMarks && (
+                <button
+                  type="button"
+                  onClick={() => setShowCameraOptions(!showCameraOptions)}
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all flex items-center gap-1 cursor-pointer ${
+                    showCameraOptions
+                      ? 'bg-cyan-500 text-black font-bold border-cyan-400'
+                      : 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-700 text-cyan-300'
+                  }`}
+                  title="Configure Camera Marks"
+                >
+                  <Settings2 className="w-3 h-3" />
+                  <span>{showCameraOptions ? 'Hide Cam Opts' : 'Camera Opts'}</span>
+                </button>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-2 text-xs font-mono text-slate-300">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={cropMarks} onChange={(e) => setCropMarks(e.target.checked)} className="rounded accent-cyan-400" />
@@ -1506,6 +1539,173 @@ export default function ImpositionSection({
                 </label>
               )}
             </div>
+
+            {/* ─── Expandable Camera Mark Options ─── */}
+            {cameraMarks && showCameraOptions && (
+              <div className="mt-3 pt-3 border-t border-[#1E293B] space-y-3 bg-[#10141D] p-3 rounded-xl border border-cyan-900/40">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-1.5 uppercase">
+                    <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                    Optical Camera Fiducial Options
+                  </span>
+                  <span className="text-[9px] font-mono text-slate-500">
+                    Zünd • Kongsberg • i-cut
+                  </span>
+                </div>
+
+                {/* Mark Style */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-mono text-slate-400">Mark Style & Geometry:</span>
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{cameraMarkStyle}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'RING', label: 'Ring + Dot', desc: 'Zünd / Kongsberg' },
+                      { id: 'SOLID', label: 'Solid Dot', desc: 'i-cut standard' },
+                      { id: 'TARGET', label: 'Crosshair', desc: 'Optical bullseye' }
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => setCameraMarkStyle(st.id)}
+                        className={`px-2 py-1.5 rounded-lg text-left transition-all border ${
+                          cameraMarkStyle === st.id
+                            ? 'bg-cyan-950/90 border-cyan-500 text-white shadow-sm'
+                            : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="text-[11px] font-mono font-bold">{st.label}</div>
+                        <div className="text-[9px] text-slate-500 line-clamp-1">{st.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mark Diameter / Size */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-mono text-slate-400">Fiducial Diameter (Size):</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="2"
+                        max="12"
+                        step="0.5"
+                        value={cameraMarkSize}
+                        onChange={(e) => setCameraMarkSize(Math.max(1, parseFloat(e.target.value) || 5))}
+                        className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                      />
+                      <span className="text-[10px] font-mono text-slate-500">mm</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { val: 3, label: '3 mm' },
+                      { val: 4, label: '4 mm' },
+                      { val: 5, label: '5 mm (Std)' },
+                      { val: 6, label: '6 mm' },
+                      { val: 8, label: '8 mm (Large)' }
+                    ].map(sz => (
+                      <button
+                        key={sz.val}
+                        type="button"
+                        onClick={() => setCameraMarkSize(sz.val)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
+                          cameraMarkSize === sz.val
+                            ? 'bg-cyan-500 text-black font-bold border-cyan-400'
+                            : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
+                        }`}
+                      >
+                        {sz.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Edge Inset / Offset */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-mono text-slate-400">Edge Inset (Offset from Sheet Margin):</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="3"
+                        max="30"
+                        step="1"
+                        value={cameraMarkOffset}
+                        onChange={(e) => setCameraMarkOffset(Math.max(2, parseFloat(e.target.value) || 8))}
+                        className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                      />
+                      <span className="text-[10px] font-mono text-slate-500">mm</span>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min="3"
+                    max="25"
+                    step="1"
+                    value={cameraMarkOffset}
+                    onChange={(e) => setCameraMarkOffset(parseFloat(e.target.value))}
+                    className="w-full accent-cyan-400"
+                  />
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                    {[
+                      { val: 5, label: '5 mm' },
+                      { val: 8, label: '8 mm (Std)' },
+                      { val: 10, label: '10 mm' },
+                      { val: 15, label: '15 mm' }
+                    ].map(off => (
+                      <button
+                        key={off.val}
+                        type="button"
+                        onClick={() => setCameraMarkOffset(off.val)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
+                          cameraMarkOffset === off.val
+                            ? 'bg-cyan-500 text-black font-bold border-cyan-400'
+                            : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
+                        }`}
+                      >
+                        {off.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Placement Positions */}
+                <div className="pt-2 border-t border-[#1E293B]">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-mono text-slate-400">Fiducial Distribution:</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCameraMarkPositions('CORNERS_AND_EDGES')}
+                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${
+                        cameraMarkPositions === 'CORNERS_AND_EDGES'
+                          ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
+                          : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="text-[11px] font-mono">4 Corners + Mid Edges</div>
+                      <div className="text-[9px] text-slate-500">8 fiducials (Large Format / Zünd)</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCameraMarkPositions('CORNERS')}
+                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${
+                        cameraMarkPositions === 'CORNERS'
+                          ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
+                          : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="text-[11px] font-mono">4 Corners Only</div>
+                      <div className="text-[9px] text-slate-500">Perimeter registration</div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ─── Error Display ────────────────────────────────────────────── */}
@@ -1585,6 +1785,10 @@ export default function ImpositionSection({
             registrationMarks={registrationMarks}
             colorBars={colorBars}
             cameraMarks={cameraMarks}
+            cameraMarkSize={cameraMarkSize}
+            cameraMarkOffset={cameraMarkOffset}
+            cameraMarkStyle={cameraMarkStyle}
+            cameraMarkPositions={cameraMarkPositions}
             workStyle={workStyle}
             impositionMode={bindingStyle}
             selectedLayout={selectedLayout}
