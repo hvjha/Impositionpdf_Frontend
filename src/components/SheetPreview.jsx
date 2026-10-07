@@ -185,37 +185,28 @@ function ColorBar({ x, y, width, height }) {
   );
 }
 
-function CameraMark({ cx, cy, radius = 2.4, style = 'RING' }) {
-  const guideRadius = radius * 1.8;
-  const isRingOrTarget = style === 'RING' || style === 'TARGET';
-  const isTarget = style === 'TARGET';
-
+function CameraMark({ cx, cy, radius = 5, color = '#000000', borderColor = '#000000' }) {
+  const outerBorderRadius = radius + 1.5;
   return (
-    <g>
-      {/* High-contrast quiet backing circle */}
-      <circle cx={cx} cy={cy} r={guideRadius + 1.2} fill="#FFFFFF" stroke="none" />
-      {/* Outer alignment guide ring */}
-      {isRingOrTarget && (
-        <circle cx={cx} cy={cy} r={guideRadius} fill="none" stroke="#000000" strokeWidth="0.25" />
-      )}
-      {/* Solid black camera fiducial dot */}
-      <circle cx={cx} cy={cy} r={radius} fill="#000000" stroke="none" />
-      {/* Optical guide cross ticks */}
-      {isRingOrTarget && (
-        <>
-          <line x1={cx - guideRadius - 1.2} y1={cy} x2={cx - radius - 0.3} y2={cy} stroke="#000000" strokeWidth="0.2" />
-          <line x1={cx + radius + 0.3} y1={cy} x2={cx + guideRadius + 1.2} y2={cy} stroke="#000000" strokeWidth="0.2" />
-          <line x1={cx} y1={cy - guideRadius - 1.2} x2={cx} y2={cy - radius - 0.3} stroke="#000000" strokeWidth="0.2" />
-          <line x1={cx} y1={cy + radius + 0.3} x2={cx} y2={cy + guideRadius + 1.2} stroke="#000000" strokeWidth="0.2" />
-        </>
-      )}
-      {/* Extended crosshair for TARGET style */}
-      {isTarget && (
-        <>
-          <line x1={cx - guideRadius * 1.5} y1={cy} x2={cx + guideRadius * 1.5} y2={cy} stroke="#000000" strokeWidth="0.15" strokeDasharray="0.6 0.6" />
-          <line x1={cx} y1={cy - guideRadius * 1.5} x2={cx} y2={cy + guideRadius * 1.5} stroke="#000000" strokeWidth="0.15" strokeDasharray="0.6 0.6" />
-        </>
-      )}
+    <g className="camera-mark-fiducial">
+      {/* Outer border ring with white contrast backing */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={outerBorderRadius}
+        fill="#FFFFFF"
+        stroke={borderColor}
+        strokeWidth="0.5"
+      />
+      {/* 5 mm radius circle filled with color with an outer border */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={radius}
+        fill={color}
+        stroke={borderColor}
+        strokeWidth="0.3"
+      />
     </g>
   );
 }
@@ -242,7 +233,8 @@ export default function SheetPreview({
   registrationMarks = true,
   colorBars = true,
   cameraMarks = true,
-  cameraMarkSize = 5,
+  cameraMarkRadius = 5,
+  cameraMarkSize = 10,
   cameraMarkOffset = 8,
   cameraMarkStyle = 'RING',
   cameraMarkPositions = 'CORNERS_AND_EDGES',
@@ -1025,26 +1017,25 @@ export default function SheetPreview({
             </>
           )}
 
-          {/* Optical Camera Marks (Digital Cut & Register Fiducials) */}
+          {/* Optical Camera Marks (5 mm radius circle filled with color with outer border) */}
           {cameraMarks && (() => {
-            const camRad = (parseFloat(cameraMarkSize) || 5) / 2;
-            const camOff = Math.max(3, parseFloat(cameraMarkOffset) || 8);
-            const camStyle = cameraMarkStyle || 'RING';
+            const camRad = parseFloat(cameraMarkRadius) || (parseFloat(cameraMarkSize) ? (parseFloat(cameraMarkSize) <= 6 ? parseFloat(cameraMarkSize) : parseFloat(cameraMarkSize) / 2) : 5) || 5;
+            const camOff = Math.max(camRad + 2, parseFloat(cameraMarkOffset) || 8);
             const showEdges = cameraMarkPositions !== 'CORNERS';
             return (
               <>
                 {/* 4 Corners */}
-                <CameraMark cx={pad + camOff} cy={pad + camOff} radius={camRad} style={camStyle} />
-                <CameraMark cx={pad + sw - camOff} cy={pad + camOff} radius={camRad} style={camStyle} />
-                <CameraMark cx={pad + camOff} cy={pad + sh - camOff} radius={camRad} style={camStyle} />
-                <CameraMark cx={pad + sw - camOff} cy={pad + sh - camOff} radius={camRad} style={camStyle} />
+                <CameraMark cx={pad + camOff} cy={pad + camOff} radius={camRad} />
+                <CameraMark cx={pad + sw - camOff} cy={pad + camOff} radius={camRad} />
+                <CameraMark cx={pad + camOff} cy={pad + sh - camOff} radius={camRad} />
+                <CameraMark cx={pad + sw - camOff} cy={pad + sh - camOff} radius={camRad} />
                 {/* Mid-edge fiducials */}
                 {showEdges && (
                   <>
-                    <CameraMark cx={pad + sw / 2} cy={pad + camOff} radius={camRad} style={camStyle} />
-                    <CameraMark cx={pad + sw / 2} cy={pad + sh - camOff} radius={camRad} style={camStyle} />
-                    <CameraMark cx={pad + camOff} cy={pad + sh / 2} radius={camRad} style={camStyle} />
-                    <CameraMark cx={pad + sw - camOff} cy={pad + sh / 2} radius={camRad} style={camStyle} />
+                    <CameraMark cx={pad + sw / 2} cy={pad + camOff} radius={camRad} />
+                    <CameraMark cx={pad + sw / 2} cy={pad + sh - camOff} radius={camRad} />
+                    <CameraMark cx={pad + camOff} cy={pad + sh / 2} radius={camRad} />
+                    <CameraMark cx={pad + sw - camOff} cy={pad + sh / 2} radius={camRad} />
                   </>
                 )}
               </>

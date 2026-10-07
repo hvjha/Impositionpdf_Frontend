@@ -48,14 +48,14 @@ const SIGNATURE_PRESETS = [
 ];
 
 const SHEET_PRESETS = [
-  { name: 'SRA3',           label: 'SRA3 (320 × 450 mm)',       width: 320, height: 450 },
-  { name: 'A3+',            label: 'A3+ (329 × 483 mm)',        width: 329, height: 483 },
-  { name: 'A3',             label: 'A3 (297 × 420 mm)',         width: 297, height: 420 },
-  { name: 'A4',             label: 'A4 (210 × 297 mm)',         width: 210, height: 297 },
-  { name: 'B2',             label: 'B2 (500 × 707 mm)',         width: 500, height: 707 },
-  { name: '20×26"',         label: '20 × 26 in (508 × 660 mm)', width: 508, height: 660 },
-  { name: '23×36"',         label: '23 × 36 in (584 × 914 mm)', width: 584, height: 914 },
-  { name: '25×38"',         label: '25 × 38 in (635 × 965 mm)', width: 635, height: 965 },
+  { name: 'SRA3',           label: 'SRA3 (320 × 450 mm) • Digital Std',       width: 320, height: 450, tech: 'DIGITAL' },
+  { name: 'A3+',            label: 'A3+ (329 × 483 mm) • Digital Extra',      width: 329, height: 483, tech: 'DIGITAL' },
+  { name: 'A3',             label: 'A3 (297 × 420 mm) • Digital Medium',      width: 297, height: 420, tech: 'DIGITAL' },
+  { name: 'A4',             label: 'A4 (210 × 297 mm) • Digital Short-Run',   width: 210, height: 297, tech: 'DIGITAL' },
+  { name: 'B2',             label: 'B2 (500 × 707 mm) • Half-Size Offset',    width: 500, height: 707, tech: 'OFFSET' },
+  { name: '20×26"',         label: '20 × 26 in (508 × 660 mm) • Offset Short', width: 508, height: 660, tech: 'OFFSET' },
+  { name: '23×36"',         label: '23 × 36 in (584 × 914 mm) • Offset 8-up', width: 584, height: 914, tech: 'OFFSET' },
+  { name: '25×38"',         label: '25 × 38 in (635 × 965 mm) • Offset Book', width: 635, height: 965, tech: 'OFFSET' },
   { name: 'CUSTOM',         label: 'Custom Press Sheet Size...', width: null, height: null, isCustom: true },
 ];
 
@@ -202,19 +202,67 @@ export default function ImpositionSection({
   const [gutterY, setGutterY] = useState(4);
   const [guttersLinked, setGuttersLinked] = useState(true);
 
+  // ─── Press Technology: Offset vs Digital ──────────────────────────────
+  const [printTechnology, setPrintTechnology] = useState('OFFSET'); // 'OFFSET' | 'DIGITAL'
+
   // ─── Prepress Production Marks ──────────────────────────────────────────
   const [cropMarks, setCropMarks] = useState(true);
   const [cropMarkLength, setCropMarkLength] = useState(5);
   const [cropMarkOffset, setCropMarkOffset] = useState(3);
   const [registrationMarks, setRegistrationMarks] = useState(true);
   const [colorBars, setColorBars] = useState(true);
-  const [cameraMarks, setCameraMarks] = useState(true);
-  const [cameraMarkSize, setCameraMarkSize] = useState(5); // mm diameter
+  const [cameraMarks, setCameraMarks] = useState(false);
+  const [cameraMarkRadius, setCameraMarkRadius] = useState(5); // 5 mm radius circle
   const [cameraMarkOffset, setCameraMarkOffset] = useState(8); // mm sheet inset
-  const [cameraMarkStyle, setCameraMarkStyle] = useState('RING'); // 'RING' | 'SOLID' | 'TARGET'
   const [cameraMarkPositions, setCameraMarkPositions] = useState('CORNERS_AND_EDGES'); // 'CORNERS_AND_EDGES' | 'CORNERS'
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [jobSlug, setJobSlug] = useState(true);
+
+  // Switch between Offset Press and Digital Press with smart presets
+  const handleSelectPressTechnology = (tech) => {
+    setPrintTechnology(tech);
+    if (tech === 'OFFSET') {
+      if (['SRA3', 'A3+', 'A4'].includes(sheetPreset)) {
+        setSheetPreset('23×36"');
+        setSheetWidth(584);
+        setSheetHeight(914);
+        setCustomSheet(false);
+      }
+      setCropMarks(true);
+      setRegistrationMarks(true);
+      setColorBars(true);
+      setJobSlug(true);
+      setCollatingMarks(true);
+      setCameraMarks(false);
+      setVerticalMargin(10);
+      setHorizontalMargin(10);
+      setMarginTop(10);
+      setMarginBottom(10);
+      setMarginLeft(10);
+      setMarginRight(10);
+    } else if (tech === 'DIGITAL') {
+      if (['23×36"', '25×38"', '20×26"', 'B2'].includes(sheetPreset)) {
+        setSheetPreset('SRA3');
+        setSheetWidth(320);
+        setSheetHeight(450);
+        setCustomSheet(false);
+      }
+      setCropMarks(true);
+      setRegistrationMarks(false); // No plates in digital
+      setColorBars(false);        // Closed-loop digital calibration
+      setJobSlug(true);
+      setCollatingMarks(false);
+      setCameraMarks(true);        // Optical fiducials for automated digital cutter
+      setCameraMarkRadius(5);      // 5 mm radius circle
+      setCameraMarkOffset(8);      // 8 mm margin offset
+      setVerticalMargin(6);
+      setHorizontalMargin(6);
+      setMarginTop(6);
+      setMarginBottom(6);
+      setMarginLeft(6);
+      setMarginRight(6);
+    }
+  };
 
   // ─── Work Style ─────────────────────────────────────────────────────────
   const [workStyle, setWorkStyle] = useState('SHEETWISE');
@@ -489,6 +537,7 @@ export default function ImpositionSection({
         vertical: parseFloat(gutterY || 0),
         unit: 'mm'
       },
+      printTechnology,
       cropMarks: {
         enabled: cropMarks,
         length: parseFloat(cropMarkLength || 5),
@@ -503,14 +552,14 @@ export default function ImpositionSection({
         colorBar: colorBars,
         cameraMarks: cameraMarks ? {
           enabled: true,
-          size: parseFloat(cameraMarkSize) || 5,
+          radius: parseFloat(cameraMarkRadius) || 5,
+          size: (parseFloat(cameraMarkRadius) || 5) * 2,
           offset: parseFloat(cameraMarkOffset) || 8,
-          style: cameraMarkStyle,
           positions: cameraMarkPositions
         } : false,
-        cameraMarkSize: parseFloat(cameraMarkSize) || 5,
+        cameraMarkRadius: parseFloat(cameraMarkRadius) || 5,
+        cameraMarkSize: (parseFloat(cameraMarkRadius) || 5) * 2,
         cameraMarkOffset: parseFloat(cameraMarkOffset) || 8,
-        cameraMarkStyle,
         cameraMarkPositions,
         jobSlug,
         collatingMarks: partMode === 'TEXT' ? collatingMarks : false
@@ -549,6 +598,86 @@ export default function ImpositionSection({
         <p className="text-xs text-slate-400 mt-1 max-w-xl mx-auto">
           Compliant with Kodak Preps & CIP4 standards. Automatically creates signatures, calculates dynamic spines, and generates production press sheets.
         </p>
+      </div>
+
+      {/* ─── Press Technology Switcher: Offset vs Digital Setup ──────────── */}
+      <div className="max-w-3xl mx-auto mb-6">
+        <div className="bg-[#10141D] border border-[#233045] rounded-2xl p-2.5 shadow-2xl">
+          <div className="flex items-center justify-between px-3 pt-1 pb-2.5">
+            <span className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Printer className="w-3.5 h-3.5 text-cyan-400" /> Choose Printing Technology Setup:
+            </span>
+            <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase transition-all ${
+              printTechnology === 'DIGITAL' 
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' 
+                : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+            }`}>
+              {printTechnology === 'DIGITAL' ? '⚡ Digital Press Active (SRA3 • Optical Fiducials)' : '🏭 Offset Press Active (CTP • 4-Plate Reg • Bars)'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* OFFSET PRESS OPTION */}
+            <button
+              type="button"
+              onClick={() => handleSelectPressTechnology('OFFSET')}
+              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${
+                printTechnology === 'OFFSET'
+                  ? 'bg-gradient-to-br from-blue-950/80 via-[#152033] to-[#141C2A] border-blue-500 text-white shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/30'
+                  : 'bg-[#141C2A]/70 border-[#1E293B] text-slate-400 hover:text-white hover:border-[#2B3C57]'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
+                printTechnology === 'OFFSET' ? 'bg-blue-500 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
+              }`}>
+                <Printer className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold font-mono tracking-wide text-white">OFFSET PRESS SETUP</span>
+                  {printTechnology === 'OFFSET' && (
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300">
+                      SELECTED
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                  Commercial CTP Plates • 23×36" / B2 Sheet • CMYK Density Bars • 4-Color Reg Targets • Gripper Margin
+                </p>
+              </div>
+            </button>
+
+            {/* DIGITAL PRESS OPTION */}
+            <button
+              type="button"
+              onClick={() => handleSelectPressTechnology('DIGITAL')}
+              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${
+                printTechnology === 'DIGITAL'
+                  ? 'bg-gradient-to-br from-cyan-950/80 via-[#122830] to-[#141C2A] border-cyan-400 text-white shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/30'
+                  : 'bg-[#141C2A]/70 border-[#1E293B] text-slate-400 hover:text-white hover:border-[#2B3C57]'
+              }`}
+            >
+              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
+                printTechnology === 'DIGITAL' ? 'bg-cyan-400 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
+              }`}>
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold font-mono tracking-wide text-white">DIGITAL PRESS SETUP</span>
+                  {printTechnology === 'DIGITAL' && (
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-cyan-400/20 text-cyan-300">
+                      SELECTED
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                  SRA3 / A3+ • 5 mm Optical Camera Fiducials (Outer Border) • Direct Imaging • Digital Cutter Ready
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ─── Part Switcher: Book Text vs Book Cover ─────────────────────── */}
@@ -1546,54 +1675,46 @@ export default function ImpositionSection({
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-1.5 uppercase">
                     <Camera className="w-3.5 h-3.5 text-cyan-400" />
-                    Optical Camera Fiducial Options
+                    Optical Camera Fiducial Settings
                   </span>
                   <span className="text-[9px] font-mono text-slate-500">
                     Zünd • Kongsberg • i-cut
                   </span>
                 </div>
 
-                {/* Mark Style */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-slate-400">Mark Style & Geometry:</span>
-                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{cameraMarkStyle}</span>
+                {/* 5 mm radius circle filled with color with an outer border */}
+                <div className="p-2.5 rounded-lg bg-[#0B0F17] border border-cyan-800/40 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-[#141C2A] flex items-center justify-center border border-[#233045] shrink-0">
+                    <svg width="32" height="32" viewBox="0 0 32 32">
+                      {/* Outer border ring */}
+                      <circle cx="16" cy="16" r="13" fill="#FFFFFF" stroke="#000000" strokeWidth="1.2" />
+                      {/* 5 mm radius circle filled with color */}
+                      <circle cx="16" cy="16" r="9" fill="#000000" stroke="#000000" strokeWidth="0.8" />
+                    </svg>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { id: 'RING', label: 'Ring + Dot', desc: 'Zünd / Kongsberg' },
-                      { id: 'SOLID', label: 'Solid Dot', desc: 'i-cut standard' },
-                      { id: 'TARGET', label: 'Crosshair', desc: 'Optical bullseye' }
-                    ].map((st) => (
-                      <button
-                        key={st.id}
-                        type="button"
-                        onClick={() => setCameraMarkStyle(st.id)}
-                        className={`px-2 py-1.5 rounded-lg text-left transition-all border ${
-                          cameraMarkStyle === st.id
-                            ? 'bg-cyan-950/90 border-cyan-500 text-white shadow-sm'
-                            : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <div className="text-[11px] font-mono font-bold">{st.label}</div>
-                        <div className="text-[9px] text-slate-500 line-clamp-1">{st.desc}</div>
-                      </button>
-                    ))}
+                  <div>
+                    <div className="text-[11px] font-mono font-bold text-white flex items-center gap-1.5">
+                      <span>5 mm Radius Circle</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700/50">Clean Fiducial</span>
+                    </div>
+                    <div className="text-[9px] text-slate-400 mt-0.5 leading-tight">
+                      5 mm radius circle filled with solid color with an outer border ring. Precision optical fiducials for automated digital cutters.
+                    </div>
                   </div>
                 </div>
 
-                {/* Mark Diameter / Size */}
+                {/* Mark Radius */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-slate-400">Fiducial Diameter (Size):</span>
+                    <span className="text-[10px] font-mono text-slate-400">Circle Radius:</span>
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
                         min="2"
-                        max="12"
+                        max="10"
                         step="0.5"
-                        value={cameraMarkSize}
-                        onChange={(e) => setCameraMarkSize(Math.max(1, parseFloat(e.target.value) || 5))}
+                        value={cameraMarkRadius}
+                        onChange={(e) => setCameraMarkRadius(Math.max(1, parseFloat(e.target.value) || 5))}
                         className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
                       />
                       <span className="text-[10px] font-mono text-slate-500">mm</span>
@@ -1601,18 +1722,17 @@ export default function ImpositionSection({
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {[
-                      { val: 3, label: '3 mm' },
                       { val: 4, label: '4 mm' },
                       { val: 5, label: '5 mm (Std)' },
                       { val: 6, label: '6 mm' },
-                      { val: 8, label: '8 mm (Large)' }
+                      { val: 8, label: '8 mm' }
                     ].map(sz => (
                       <button
                         key={sz.val}
                         type="button"
-                        onClick={() => setCameraMarkSize(sz.val)}
+                        onClick={() => setCameraMarkRadius(sz.val)}
                         className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
-                          cameraMarkSize === sz.val
+                          cameraMarkRadius === sz.val
                             ? 'bg-cyan-500 text-black font-bold border-cyan-400'
                             : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
                         }`}
@@ -1785,9 +1905,9 @@ export default function ImpositionSection({
             registrationMarks={registrationMarks}
             colorBars={colorBars}
             cameraMarks={cameraMarks}
-            cameraMarkSize={cameraMarkSize}
+            cameraMarkRadius={cameraMarkRadius}
+            cameraMarkSize={cameraMarkRadius * 2}
             cameraMarkOffset={cameraMarkOffset}
-            cameraMarkStyle={cameraMarkStyle}
             cameraMarkPositions={cameraMarkPositions}
             workStyle={workStyle}
             impositionMode={bindingStyle}
