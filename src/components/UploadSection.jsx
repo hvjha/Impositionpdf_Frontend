@@ -173,7 +173,7 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
           {uploading ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Processing & Storing in GridFS...
+              Fast Ingesting Source PDF...
             </>
           ) : (
             <>

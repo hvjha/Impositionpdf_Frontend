@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Grid, 
-  Layers, 
-  Printer, 
+import {
+  Grid,
+  Layers,
+  Printer,
   ArrowRight,
   AlertCircle,
   FileCheck,
@@ -42,60 +42,60 @@ import SheetPreview from './SheetPreview';
 const SIGNATURE_PRESETS = [
   { pages: 16, label: '16PP', name: '16PP Right-Angle', desc: 'CIP4 F16-1 • 4×2 Duplex (Preps Standard)', cols: 4, rows: 2, badge: 'Standard Book' },
   { pages: 32, label: '32PP', name: '32PP Press Section', desc: 'CIP4 F32-1 • 4×4 Duplex (Web / Large Sheet)', cols: 4, rows: 4, badge: 'Web Press' },
-  { pages: 8,  label: '8PP',  name: '8PP Right-Angle', desc: 'CIP4 F8-1 • 2×2 Duplex (Small Section)', cols: 2, rows: 2 },
-  { pages: 4,  label: '4PP',  name: '4PP Folio', desc: 'CIP4 F4-1 • 2×1 Duplex (Half-Fold Booklet)', cols: 2, rows: 1 },
-  { pages: 2,  label: '2PP',  name: '2PP Spread', desc: 'Single-fold / 2-up Spread', cols: 2, rows: 1 },
+  { pages: 8, label: '8PP', name: '8PP Right-Angle', desc: 'CIP4 F8-1 • 2×2 Duplex (Small Section)', cols: 2, rows: 2 },
+  { pages: 4, label: '4PP', name: '4PP Folio', desc: 'CIP4 F4-1 • 2×1 Duplex (Half-Fold Booklet)', cols: 2, rows: 1 },
+  { pages: 2, label: '2PP', name: '2PP Spread', desc: 'Single-fold / 2-up Spread', cols: 2, rows: 1 },
 ];
 
 const SHEET_PRESETS = [
-  { name: 'SRA3',           label: 'SRA3 (320 × 450 mm) • Digital Std',       width: 320, height: 450, tech: 'DIGITAL' },
-  { name: 'A3+',            label: 'A3+ (329 × 483 mm) • Digital Extra',      width: 329, height: 483, tech: 'DIGITAL' },
-  { name: 'A3',             label: 'A3 (297 × 420 mm) • Digital Medium',      width: 297, height: 420, tech: 'DIGITAL' },
-  { name: 'A4',             label: 'A4 (210 × 297 mm) • Digital Short-Run',   width: 210, height: 297, tech: 'DIGITAL' },
-  { name: 'B2',             label: 'B2 (500 × 707 mm) • Half-Size Offset',    width: 500, height: 707, tech: 'OFFSET' },
-  { name: '20×26"',         label: '20 × 26 in (508 × 660 mm) • Offset Short', width: 508, height: 660, tech: 'OFFSET' },
-  { name: '23×36"',         label: '23 × 36 in (584 × 914 mm) • Offset 8-up', width: 584, height: 914, tech: 'OFFSET' },
-  { name: '25×38"',         label: '25 × 38 in (635 × 965 mm) • Offset Book', width: 635, height: 965, tech: 'OFFSET' },
-  { name: 'CUSTOM',         label: 'Custom Press Sheet Size...', width: null, height: null, isCustom: true },
+  { name: 'SRA3', label: 'SRA3 (320 × 450 mm) • Digital Std', width: 320, height: 450, tech: 'DIGITAL' },
+  { name: 'A3+', label: 'A3+ (329 × 483 mm) • Digital Extra', width: 329, height: 483, tech: 'DIGITAL' },
+  { name: 'A3', label: 'A3 (297 × 420 mm) • Digital Medium', width: 297, height: 420, tech: 'DIGITAL' },
+  { name: 'A4', label: 'A4 (210 × 297 mm) • Digital Short-Run', width: 210, height: 297, tech: 'DIGITAL' },
+  { name: 'B2', label: 'B2 (500 × 707 mm) • Half-Size Offset', width: 500, height: 707, tech: 'OFFSET' },
+  { name: '20×26"', label: '20 × 26 in (508 × 660 mm) • Offset Short', width: 508, height: 660, tech: 'OFFSET' },
+  { name: '23×36"', label: '23 × 36 in (584 × 914 mm) • Offset 8-up', width: 584, height: 914, tech: 'OFFSET' },
+  { name: '25×38"', label: '25 × 38 in (635 × 965 mm) • Offset Book', width: 635, height: 965, tech: 'OFFSET' },
+  { name: 'CUSTOM', label: 'Custom Press Sheet Size...', width: null, height: null, isCustom: true },
 ];
 
 const BOOK_PRESETS = [
-  { name: 'AUTO',        label: 'Auto (Detect from Source PDF)',              desc: 'Uses uploaded PDF page size', isAuto: true },
-  { name: 'A5',          label: 'A5 (148 × 210 mm)',                  width: 148,   height: 210,   desc: 'Standard Novel / Paperback' },
-  { name: 'A4',          label: 'A4 (210 × 297 mm)',                  width: 210,   height: 297,   desc: 'Magazines, Catalogues, Manuals' },
-  { name: 'ROYAL_8VO',   label: 'Royal Octavo (156 × 234 mm)',        width: 156,   height: 234,   desc: 'Hardcover & Academic Standard' },
-  { name: 'CROWN_8VO',   label: 'Crown Octavo (126 × 190 mm)',        width: 126,   height: 190,   desc: 'Standard Fiction & Trade' },
-  { name: 'DEMY_8VO',    label: 'Demy Octavo (138 × 216 mm)',         width: 138,   height: 216,   desc: 'Non-Fiction, Memoirs, Biography' },
-  { name: 'US_TRADE',    label: 'US Trade 6×9 in (152.4 × 228.6 mm)',  width: 152.4, height: 228.6, desc: 'North American Standard 6×9' },
-  { name: 'US_DIGEST',   label: 'US Digest 5.5×8.5 in (140 × 216 mm)', width: 139.7, height: 215.9, desc: 'US Digest 5.5×8.5 Standard' },
-  { name: 'B5',          label: 'B5 (176 × 250 mm)',                  width: 176,   height: 250,   desc: 'Textbooks & Scientific Journals' },
-  { name: 'POCKET',      label: 'Pocket Book (110 × 178 mm)',         width: 110,   height: 178,   desc: 'Mass Market Paperback' },
-  { name: 'CUSTOM',      label: 'Custom Book Size...',                width: null,  height: null,  desc: 'Enter custom trim width & height', isCustom: true }
+  { name: 'AUTO', label: 'Auto (Detect from Source PDF)', desc: 'Uses uploaded PDF page size', isAuto: true },
+  { name: 'A5', label: 'A5 (148 × 210 mm)', width: 148, height: 210, desc: 'Standard Novel / Paperback' },
+  { name: 'A4', label: 'A4 (210 × 297 mm)', width: 210, height: 297, desc: 'Magazines, Catalogues, Manuals' },
+  { name: 'ROYAL_8VO', label: 'Royal Octavo (156 × 234 mm)', width: 156, height: 234, desc: 'Hardcover & Academic Standard' },
+  { name: 'CROWN_8VO', label: 'Crown Octavo (126 × 190 mm)', width: 126, height: 190, desc: 'Standard Fiction & Trade' },
+  { name: 'DEMY_8VO', label: 'Demy Octavo (138 × 216 mm)', width: 138, height: 216, desc: 'Non-Fiction, Memoirs, Biography' },
+  { name: 'US_TRADE', label: 'US Trade 6×9 in (152.4 × 228.6 mm)', width: 152.4, height: 228.6, desc: 'North American Standard 6×9' },
+  { name: 'US_DIGEST', label: 'US Digest 5.5×8.5 in (140 × 216 mm)', width: 139.7, height: 215.9, desc: 'US Digest 5.5×8.5 Standard' },
+  { name: 'B5', label: 'B5 (176 × 250 mm)', width: 176, height: 250, desc: 'Textbooks & Scientific Journals' },
+  { name: 'POCKET', label: 'Pocket Book (110 × 178 mm)', width: 110, height: 178, desc: 'Mass Market Paperback' },
+  { name: 'CUSTOM', label: 'Custom Book Size...', width: null, height: null, desc: 'Enter custom trim width & height', isCustom: true }
 ];
 
 const BINDING_STYLES = [
   { value: 'PERFECT_BINDING', label: 'Perfect Binding', icon: Layers, desc: 'Signatures gathered consecutively & glued at spine' },
-  { value: 'SADDLE_STITCH',   label: 'Saddle Stitch',   icon: BookOpen, desc: 'Signatures nested inside each other & wire stitched at spine fold' },
-  { value: 'SECTION_SEWING',  label: 'Section Sewing',  icon: FileCheck, desc: 'Signatures sewn through center fold then gathered' },
-  { value: 'CUT_AND_STACK',   label: 'Cut & Stack',     icon: Scissors, desc: 'Guillotine cut & stacked in order for digital presses' },
+  { value: 'SADDLE_STITCH', label: 'Saddle Stitch', icon: BookOpen, desc: 'Signatures nested inside each other & wire stitched at spine fold' },
+  { value: 'SECTION_SEWING', label: 'Section Sewing', icon: FileCheck, desc: 'Signatures sewn through center fold then gathered' },
+  { value: 'CUT_AND_STACK', label: 'Cut & Stack', icon: Scissors, desc: 'Guillotine cut & stacked in order for digital presses' },
 ];
 
 const WORK_STYLES = [
-  { value: 'SHEETWISE',        label: 'Sheetwise (Front & Back Plates)', desc: 'Standard duplex with independent front and back' },
-  { value: 'WORK_AND_TURN',    label: 'Work and Turn',                 desc: 'Same plate, flip sheet along horizontal axis' },
-  { value: 'WORK_AND_TUMBLE',  label: 'Work and Tumble',               desc: 'Same plate, flip sheet head-to-foot (vertical axis)' },
-  { value: 'SIMPLEX',          label: 'Simplex (Single-Sided)',        desc: 'Print on front side only' },
-  { value: 'PERFECTOR',        label: 'Perfector Press',               desc: 'Simultaneous duplex printing' },
+  { value: 'SHEETWISE', label: 'Sheetwise (Front & Back Plates)', desc: 'Standard duplex with independent front and back' },
+  { value: 'WORK_AND_TURN', label: 'Work and Turn', desc: 'Same plate, flip sheet along horizontal axis' },
+  { value: 'WORK_AND_TUMBLE', label: 'Work and Tumble', desc: 'Same plate, flip sheet head-to-foot (vertical axis)' },
+  { value: 'SIMPLEX', label: 'Simplex (Single-Sided)', desc: 'Print on front side only' },
+  { value: 'PERFECTOR', label: 'Perfector Press', desc: 'Simultaneous duplex printing' },
 ];
 
 // Paper stocks for dynamic spine calculation
 const PAPER_CALIPER_PRESETS = [
   { label: '80 gsm White Offset / Book Paper', caliper: 0.096 },
-  { label: '70 gsm Maplitho / Novel Stock',    caliper: 0.091 },
-  { label: '90 gsm Gloss / Matt Art',          caliper: 0.082 },
-  { label: '100 gsm Art Paper',                caliper: 0.095 },
-  { label: '130 gsm Art Paper',                caliper: 0.115 },
-  { label: '170 gsm Heavy Art Card',           caliper: 0.150 },
+  { label: '70 gsm Maplitho / Novel Stock', caliper: 0.091 },
+  { label: '90 gsm Gloss / Matt Art', caliper: 0.082 },
+  { label: '100 gsm Art Paper', caliper: 0.095 },
+  { label: '130 gsm Art Paper', caliper: 0.115 },
+  { label: '170 gsm Heavy Art Card', caliper: 0.150 },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -182,14 +182,12 @@ export default function ImpositionSection({
   const [pageOrientation, setPageOrientation] = useState('AUTO'); // 'AUTO' | 'PORTRAIT' | 'LANDSCAPE'
   const [pageRotation, setPageRotation] = useState(0); // 0 | 90 | 180 | 270
 
-  // ─── Sheet Margins (Vertical & Horizontal + Advanced 4-Sided) ───────────
-  const [verticalMargin, setVerticalMargin] = useState(10);
-  const [horizontalMargin, setHorizontalMargin] = useState(10);
+  // ─── Sheet Margins (Independent 4-Sided Machine Margins) ────────────────
   const [marginTop, setMarginTop] = useState(10);
   const [marginBottom, setMarginBottom] = useState(10);
   const [marginLeft, setMarginLeft] = useState(10);
   const [marginRight, setMarginRight] = useState(10);
-  const [showAdvancedMargins, setShowAdvancedMargins] = useState(false);
+  const [marginsLinked, setMarginsLinked] = useState(false); // Independent by default as requested
 
   const [bleedTop, setBleedTop] = useState(3);
   const [bleedBottom, setBleedBottom] = useState(3);
@@ -209,11 +207,11 @@ export default function ImpositionSection({
   const [cropMarks, setCropMarks] = useState(true);
   const [cropMarkLength, setCropMarkLength] = useState(5);
   const [cropMarkOffset, setCropMarkOffset] = useState(3);
-  const [registrationMarks, setRegistrationMarks] = useState(true);
+  // Note: Registration marks removed as requested (no longer used in modern prepress)
   const [colorBars, setColorBars] = useState(true);
   const [cameraMarks, setCameraMarks] = useState(false);
-  const [cameraMarkRadius, setCameraMarkRadius] = useState(5); // 5 mm radius circle
-  const [cameraMarkOffset, setCameraMarkOffset] = useState(8); // mm sheet inset
+  const [cameraMarkRadius, setCameraMarkRadius] = useState(3.5); // 3.5 mm radius circle
+  const [cameraMarkOffset, setCameraMarkOffset] = useState(6); // mm sheet inset
   const [cameraMarkPositions, setCameraMarkPositions] = useState('CORNERS_AND_EDGES'); // 'CORNERS_AND_EDGES' | 'CORNERS'
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [jobSlug, setJobSlug] = useState(true);
@@ -229,14 +227,11 @@ export default function ImpositionSection({
         setCustomSheet(false);
       }
       setCropMarks(true);
-      setRegistrationMarks(true);
       setColorBars(true);
       setJobSlug(true);
       setCollatingMarks(true);
       setCameraMarks(false);
-      setVerticalMargin(10);
-      setHorizontalMargin(10);
-      setMarginTop(10);
+      setMarginTop(15); // Standard offset lead gripper allowance
       setMarginBottom(10);
       setMarginLeft(10);
       setMarginRight(10);
@@ -248,19 +243,16 @@ export default function ImpositionSection({
         setCustomSheet(false);
       }
       setCropMarks(true);
-      setRegistrationMarks(false); // No plates in digital
-      setColorBars(false);        // Closed-loop digital calibration
+      setColorBars(false);        // Closed-loop digital press calibration
       setJobSlug(true);
       setCollatingMarks(false);
       setCameraMarks(true);        // Optical fiducials for automated digital cutter
-      setCameraMarkRadius(5);      // 5 mm radius circle
-      setCameraMarkOffset(8);      // 8 mm margin offset
-      setVerticalMargin(6);
-      setHorizontalMargin(6);
-      setMarginTop(6);
-      setMarginBottom(6);
-      setMarginLeft(6);
-      setMarginRight(6);
+      setCameraMarkRadius(3.5);    // 3.5 mm radius circle ensures zero overlap with book pages
+      setCameraMarkOffset(6);      // 6 mm margin offset
+      setMarginTop(12);           // Safe generous margins for digital camera marks
+      setMarginBottom(12);
+      setMarginLeft(12);
+      setMarginRight(12);
     }
   };
 
@@ -402,36 +394,29 @@ export default function ImpositionSection({
     setCustomBook(true);
   };
 
-  // Handlers for Margins
-  const handleVerticalMarginChange = (val) => {
-    const v = Math.max(0, parseFloat(val) || 0);
-    setVerticalMargin(v);
-    setMarginTop(v);
-    setMarginBottom(v);
-  };
-
-  const handleHorizontalMarginChange = (val) => {
-    const v = Math.max(0, parseFloat(val) || 0);
-    setHorizontalMargin(v);
-    setMarginLeft(v);
-    setMarginRight(v);
-  };
-
+  // Handlers for Margins (Decoupled & Individual by default)
   const handleIndividualMarginChange = (side, val) => {
     const v = Math.max(0, parseFloat(val) || 0);
+    if (marginsLinked) {
+      setMarginTop(v);
+      setMarginBottom(v);
+      setMarginLeft(v);
+      setMarginRight(v);
+      return;
+    }
     if (side === 'top') {
       setMarginTop(v);
-      if (v === marginBottom) setVerticalMargin(v);
     } else if (side === 'bottom') {
       setMarginBottom(v);
-      if (v === marginTop) setVerticalMargin(v);
     } else if (side === 'left') {
       setMarginLeft(v);
-      if (v === marginRight) setHorizontalMargin(v);
     } else if (side === 'right') {
       setMarginRight(v);
-      if (v === marginLeft) setHorizontalMargin(v);
     }
+  };
+
+  const handleToggleMarginsLinked = () => {
+    setMarginsLinked(prev => !prev);
   };
 
   // Handlers for Cut Gutters (Padding between pages)
@@ -522,9 +507,7 @@ export default function ImpositionSection({
         top: parseFloat(marginTop || 0),
         bottom: parseFloat(marginBottom || 0),
         left: parseFloat(marginLeft || 0),
-        right: parseFloat(marginRight || 0),
-        vertical: parseFloat(verticalMargin || 0),
-        horizontal: parseFloat(horizontalMargin || 0)
+        right: parseFloat(marginRight || 0)
       },
       bleed: {
         top: parseFloat(bleedTop || 0),
@@ -546,15 +529,15 @@ export default function ImpositionSection({
       },
       marks: {
         crop: cropMarks,
-        registrationMarks,
-        registration: registrationMarks,
+        registrationMarks: false,
+        registration: false,
         colorBars,
         colorBar: colorBars,
         cameraMarks: cameraMarks ? {
           enabled: true,
-          radius: parseFloat(cameraMarkRadius) || 5,
-          size: (parseFloat(cameraMarkRadius) || 5) * 2,
-          offset: parseFloat(cameraMarkOffset) || 8,
+          radius: parseFloat(cameraMarkRadius) || 3.5,
+          size: (parseFloat(cameraMarkRadius) || 3.5) * 2,
+          offset: parseFloat(cameraMarkOffset) || 6,
           positions: cameraMarkPositions
         } : false,
         cameraMarkRadius: parseFloat(cameraMarkRadius) || 5,
@@ -607,11 +590,10 @@ export default function ImpositionSection({
             <span className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
               <Printer className="w-3.5 h-3.5 text-cyan-400" /> Choose Printing Technology Setup:
             </span>
-            <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase transition-all ${
-              printTechnology === 'DIGITAL' 
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' 
+            <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase transition-all ${printTechnology === 'DIGITAL'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
                 : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-            }`}>
+              }`}>
               {printTechnology === 'DIGITAL' ? '⚡ Digital Press Active (SRA3 • Optical Fiducials)' : '🏭 Offset Press Active (CTP • 4-Plate Reg • Bars)'}
             </span>
           </div>
@@ -621,15 +603,13 @@ export default function ImpositionSection({
             <button
               type="button"
               onClick={() => handleSelectPressTechnology('OFFSET')}
-              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${
-                printTechnology === 'OFFSET'
+              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${printTechnology === 'OFFSET'
                   ? 'bg-gradient-to-br from-blue-950/80 via-[#152033] to-[#141C2A] border-blue-500 text-white shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/30'
                   : 'bg-[#141C2A]/70 border-[#1E293B] text-slate-400 hover:text-white hover:border-[#2B3C57]'
-              }`}
+                }`}
             >
-              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
-                printTechnology === 'OFFSET' ? 'bg-blue-500 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
-              }`}>
+              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${printTechnology === 'OFFSET' ? 'bg-blue-500 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
+                }`}>
                 <Printer className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
@@ -651,15 +631,13 @@ export default function ImpositionSection({
             <button
               type="button"
               onClick={() => handleSelectPressTechnology('DIGITAL')}
-              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${
-                printTechnology === 'DIGITAL'
+              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${printTechnology === 'DIGITAL'
                   ? 'bg-gradient-to-br from-cyan-950/80 via-[#122830] to-[#141C2A] border-cyan-400 text-white shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/30'
                   : 'bg-[#141C2A]/70 border-[#1E293B] text-slate-400 hover:text-white hover:border-[#2B3C57]'
-              }`}
+                }`}
             >
-              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
-                printTechnology === 'DIGITAL' ? 'bg-cyan-400 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
-              }`}>
+              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${printTechnology === 'DIGITAL' ? 'bg-cyan-400 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
+                }`}>
                 <Sparkles className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
@@ -685,22 +663,20 @@ export default function ImpositionSection({
         <div className="inline-flex p-1 rounded-xl bg-[#141C2A] border border-[#233045] shadow-lg">
           <button
             onClick={() => { setPartMode('TEXT'); setSignatureIndex(0); }}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
-              partMode === 'TEXT'
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${partMode === 'TEXT'
                 ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             <BookOpen className="w-4 h-4" />
             Book Text (Body Signatures)
           </button>
           <button
             onClick={() => { setPartMode('COVER'); setSignatureIndex(0); }}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
-              partMode === 'COVER'
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-500/20'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             <Bookmark className="w-4 h-4" />
             Book Cover Studio (Wraparound Spread)
@@ -710,7 +686,7 @@ export default function ImpositionSection({
 
       {/* ─── Main Studio Grid ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
+
         {/* ═══════════════════════════════════════════════════════════════════
             LEFT COLUMN: CONTROLS & SPECIFICATIONS (5 COLS)
            ═══════════════════════════════════════════════════════════════════ */}
@@ -738,11 +714,10 @@ export default function ImpositionSection({
                       <button
                         key={preset.pages}
                         onClick={() => { setSelectedLayout(preset.pages); setSignatureIndex(0); }}
-                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all ${
-                          isSelected
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all ${isSelected
                             ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-500/10'
                             : 'bg-[#10141D] border-[#233045] text-slate-400 hover:border-[#2B3C57] hover:text-slate-200'
-                        }`}
+                          }`}
                       >
                         <span className="text-lg font-bold font-mono">{preset.label}</span>
                         <span className="text-[10px] text-slate-400 truncate w-full">{preset.cols}×{preset.rows} Duplex</span>
@@ -836,11 +811,10 @@ export default function ImpositionSection({
                       <button
                         key={b.value}
                         onClick={() => setBindingStyle(b.value)}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          isSelected
+                        className={`p-2.5 rounded-xl border text-left transition-all ${isSelected
                             ? 'bg-cyan-950/70 border-cyan-500 text-cyan-200'
                             : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-slate-200'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-1.5 font-bold font-mono text-xs mb-1">
                           <Icon className="w-3.5 h-3.5 text-cyan-400" />
@@ -1015,9 +989,8 @@ export default function ImpositionSection({
             </div>
 
             {/* Custom Press Sheet Dimensions */}
-            <div className={`p-2.5 rounded-xl border transition-all ${
-              sheetPreset === 'CUSTOM' ? 'bg-cyan-950/40 border-cyan-500/70 shadow-sm' : 'bg-[#10141D] border-[#233045]'
-            }`}>
+            <div className={`p-2.5 rounded-xl border transition-all ${sheetPreset === 'CUSTOM' ? 'bg-cyan-950/40 border-cyan-500/70 shadow-sm' : 'bg-[#10141D] border-[#233045]'
+              }`}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[10px] font-mono text-slate-300 font-bold uppercase flex items-center gap-1.5">
                   <span>Custom Sheet Dimensions</span>
@@ -1097,11 +1070,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleToggleSheetOrientation('PORTRAIT')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    sheetOrientation === 'PORTRAIT'
+                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${sheetOrientation === 'PORTRAIT'
                       ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white hover:border-slate-600'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm">↕️</span>
                   <span>Portrait</span>
@@ -1109,11 +1081,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleToggleSheetOrientation('LANDSCAPE')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    sheetOrientation === 'LANDSCAPE'
+                  className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${sheetOrientation === 'LANDSCAPE'
                       ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-md shadow-cyan-950/50 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white hover:border-slate-600'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm">↔️</span>
                   <span>Landscape</span>
@@ -1129,13 +1100,12 @@ export default function ImpositionSection({
                 <BookOpen className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">2. Finished Book Size (Trim)</span>
               </div>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                bookPreset === 'CUSTOM'
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${bookPreset === 'CUSTOM'
                   ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
                   : bookPreset === 'AUTO'
-                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-700'
-                  : 'bg-[#10141D] text-slate-400 border-[#233045]'
-              }`}>
+                    ? 'bg-cyan-950/80 text-cyan-300 border-cyan-700'
+                    : 'bg-[#10141D] text-slate-400 border-[#233045]'
+                }`}>
                 {bookPreset === 'CUSTOM' ? 'Custom Trim' : bookPreset === 'AUTO' ? 'Auto-Detect' : bookPreset}
               </span>
             </div>
@@ -1162,9 +1132,8 @@ export default function ImpositionSection({
             </div>
 
             {/* Custom Book Trim Dimensions */}
-            <div className={`p-2.5 rounded-xl border transition-all ${
-              bookPreset === 'CUSTOM' ? 'bg-emerald-950/40 border-emerald-500/70 shadow-sm' : 'bg-[#10141D] border-[#233045]'
-            }`}>
+            <div className={`p-2.5 rounded-xl border transition-all ${bookPreset === 'CUSTOM' ? 'bg-emerald-950/40 border-emerald-500/70 shadow-sm' : 'bg-[#10141D] border-[#233045]'
+              }`}>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[10px] font-mono text-slate-300 font-bold uppercase flex items-center gap-1.5">
                   <span>Custom Trim Dimensions</span>
@@ -1253,11 +1222,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleSelectPageOrientation('AUTO', 0)}
-                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    pageOrientation === 'AUTO' && pageRotation === 0
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${pageOrientation === 'AUTO' && pageRotation === 0
                       ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                   title="Auto preserves original page aspect ratio"
                 >
                   <div className="text-[9px] text-slate-500">AUTO</div>
@@ -1267,11 +1235,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleSelectPageOrientation('PORTRAIT', 0)}
-                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    pageOrientation === 'PORTRAIT' && pageRotation === 0
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${pageOrientation === 'PORTRAIT' && pageRotation === 0
                       ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                   title="Portrait 0° Upright"
                 >
                   <div className="text-[9px] text-slate-500">0°</div>
@@ -1281,11 +1248,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleSelectPageOrientation('LANDSCAPE', 90)}
-                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    pageRotation === 90
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${pageRotation === 90
                       ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                   title="Landscape 90° Clockwise"
                 >
                   <div className="text-[9px] text-slate-500">90° CW</div>
@@ -1295,11 +1261,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleSelectPageOrientation('PORTRAIT', 180)}
-                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    pageRotation === 180
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${pageRotation === 180
                       ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                   title="Inverted 180° Head-to-Head"
                 >
                   <div className="text-[9px] text-slate-500">180°</div>
@@ -1309,11 +1274,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => handleSelectPageOrientation('LANDSCAPE', 270)}
-                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    pageRotation === 270
+                  className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer ${pageRotation === 270
                       ? 'bg-cyan-950/90 border-cyan-500 text-cyan-200 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                   title="Landscape 270° Counter-Clockwise"
                 >
                   <div className="text-[9px] text-slate-500">270° CCW</div>
@@ -1332,9 +1296,8 @@ export default function ImpositionSection({
                 <span className="text-slate-400">Target Book Trim:</span>
                 <span className="text-emerald-300 font-bold">{bookWidth} × {bookHeight} mm</span>
               </div>
-              <div className={`pt-1 text-[10px] font-mono border-t border-[#1E293B] ${
-                fitMetrics.fitsCleanly ? 'text-emerald-400' : 'text-amber-400'
-              }`}>
+              <div className={`pt-1 text-[10px] font-mono border-t border-[#1E293B] ${fitMetrics.fitsCleanly ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
                 {fitMetrics.fitsCleanly
                   ? `✓ Fits cleanly on press sheet (+${fitMetrics.deltaW}mm W, +${fitMetrics.deltaH}mm H margin allowance).`
                   : `⚠️ Grid slot is smaller than book trim (${Math.abs(fitMetrics.deltaW)}mm W / ${Math.abs(fitMetrics.deltaH)}mm H). Prepress engine will scale content to fit.`}
@@ -1351,121 +1314,182 @@ export default function ImpositionSection({
               </div>
               <button
                 type="button"
-                onClick={() => setShowAdvancedMargins(!showAdvancedMargins)}
-                className="text-[10px] font-mono text-cyan-400 hover:text-cyan-200 flex items-center gap-1 transition-all"
+                onClick={handleToggleMarginsLinked}
+                className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 transition-all cursor-pointer ${
+                  marginsLinked
+                    ? 'bg-cyan-950/80 border-cyan-500 text-cyan-300 font-bold'
+                    : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
+                }`}
+                title={marginsLinked ? "All margins are synchronized" : "Margins adjust independently (individual mode)"}
               >
-                <Settings2 className="w-3 h-3" />
-                <span>{showAdvancedMargins ? 'Hide 4-Sided' : 'Fine-Tune 4 Sides'}</span>
+                {marginsLinked ? <Link2 className="w-3 h-3 text-cyan-400" /> : <Unlink className="w-3 h-3 text-amber-400" />}
+                <span>{marginsLinked ? 'Margins Linked' : 'Independent (Individual)'}</span>
               </button>
             </div>
 
-            {/* Vertical & Horizontal Margins */}
-            <div className="space-y-3">
-              {/* Vertical Margin (Top / Bottom) */}
-              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045]">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-mono text-slate-300 flex items-center gap-1.5 font-bold">
-                    <MoveVertical className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Vertical Margin (Top & Bottom)</span>
+            {/* Individual 4-Sided Machine Margins Grid */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Top Margin */}
+              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-mono text-slate-300 font-bold flex items-center gap-1">
+                    <MoveVertical className="w-3 h-3 text-cyan-400" />
+                    <span>Top (Lead / Gripper)</span>
                   </label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
                       min="0"
                       max="100"
-                      value={verticalMargin}
-                      onChange={(e) => handleVerticalMarginChange(e.target.value)}
-                      className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                      step="0.5"
+                      value={marginTop}
+                      onChange={(e) => handleIndividualMarginChange('top', e.target.value)}
+                      className="w-12 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
                     />
-                    <span className="text-[10px] font-mono text-slate-500">mm</span>
+                    <span className="text-[9px] font-mono text-slate-500">mm</span>
                   </div>
                 </div>
                 <input
                   type="range"
                   min="0"
                   max="50"
-                  value={verticalMargin}
-                  onChange={(e) => handleVerticalMarginChange(e.target.value)}
+                  value={marginTop}
+                  onChange={(e) => handleIndividualMarginChange('top', e.target.value)}
                   className="w-full accent-cyan-400"
                 />
               </div>
 
-              {/* Horizontal Margin (Left / Right) */}
-              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045]">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] font-mono text-slate-300 flex items-center gap-1.5 font-bold">
-                    <MoveHorizontal className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Horizontal Margin (Left & Right / Grippers)</span>
+              {/* Bottom Margin */}
+              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-mono text-slate-300 font-bold flex items-center gap-1">
+                    <MoveVertical className="w-3 h-3 text-cyan-400" />
+                    <span>Bottom (Tail Edge)</span>
                   </label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
                       min="0"
                       max="100"
-                      value={horizontalMargin}
-                      onChange={(e) => handleHorizontalMarginChange(e.target.value)}
-                      className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                      step="0.5"
+                      value={marginBottom}
+                      onChange={(e) => handleIndividualMarginChange('bottom', e.target.value)}
+                      className="w-12 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
                     />
-                    <span className="text-[10px] font-mono text-slate-500">mm</span>
+                    <span className="text-[9px] font-mono text-slate-500">mm</span>
                   </div>
                 </div>
                 <input
                   type="range"
                   min="0"
                   max="50"
-                  value={horizontalMargin}
-                  onChange={(e) => handleHorizontalMarginChange(e.target.value)}
+                  value={marginBottom}
+                  onChange={(e) => handleIndividualMarginChange('bottom', e.target.value)}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+
+              {/* Left Margin */}
+              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-mono text-slate-300 font-bold flex items-center gap-1">
+                    <MoveHorizontal className="w-3 h-3 text-cyan-400" />
+                    <span>Left (Side Guide 1)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={marginLeft}
+                      onChange={(e) => handleIndividualMarginChange('left', e.target.value)}
+                      className="w-12 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                    />
+                    <span className="text-[9px] font-mono text-slate-500">mm</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={marginLeft}
+                  onChange={(e) => handleIndividualMarginChange('left', e.target.value)}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+
+              {/* Right Margin */}
+              <div className="p-2.5 rounded-xl bg-[#10141D] border border-[#233045] space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-mono text-slate-300 font-bold flex items-center gap-1">
+                    <MoveHorizontal className="w-3 h-3 text-cyan-400" />
+                    <span>Right (Side Guide 2)</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={marginRight}
+                      onChange={(e) => handleIndividualMarginChange('right', e.target.value)}
+                      className="w-12 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
+                    />
+                    <span className="text-[9px] font-mono text-slate-500">mm</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={marginRight}
+                  onChange={(e) => handleIndividualMarginChange('right', e.target.value)}
                   className="w-full accent-cyan-400"
                 />
               </div>
             </div>
 
-            {/* Advanced 4-Sided Fine Tuning (Collapsible) */}
-            {showAdvancedMargins && (
-              <div className="p-3 rounded-xl bg-[#0D121B] border border-cyan-900/50 space-y-2">
-                <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold block">
-                  Individual 4-Sided Machine Margin Adjustments
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Top (Gripper Lead Edge)</label>
-                    <input
-                      type="number"
-                      value={marginTop}
-                      onChange={(e) => handleIndividualMarginChange('top', e.target.value)}
-                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Bottom (Tail Edge)</label>
-                    <input
-                      type="number"
-                      value={marginBottom}
-                      onChange={(e) => handleIndividualMarginChange('bottom', e.target.value)}
-                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Left (Side Guide 1)</label>
-                    <input
-                      type="number"
-                      value={marginLeft}
-                      onChange={(e) => handleIndividualMarginChange('left', e.target.value)}
-                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Right (Side Guide 2)</label>
-                    <input
-                      type="number"
-                      value={marginRight}
-                      onChange={(e) => handleIndividualMarginChange('right', e.target.value)}
-                      className="w-full bg-[#141C2A] border border-[#233045] rounded px-2 py-1 text-xs font-mono text-white"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Quick Margin Setup Presets */}
+            <div className="pt-1 flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] font-mono text-slate-500">Quick Margins:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMarginTop(10);
+                  setMarginBottom(10);
+                  setMarginLeft(10);
+                  setMarginRight(10);
+                }}
+                className="text-[9px] font-mono px-2 py-0.5 rounded bg-[#10141D] hover:bg-[#1A2333] text-slate-300 border border-[#233045]"
+              >
+                Equal 10mm
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMarginTop(15);
+                  setMarginBottom(10);
+                  setMarginLeft(10);
+                  setMarginRight(10);
+                }}
+                className="text-[9px] font-mono px-2 py-0.5 rounded bg-[#10141D] hover:bg-[#1A2333] text-slate-300 border border-[#233045]"
+              >
+                Gripper 15mm (Lead)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMarginTop(12);
+                  setMarginBottom(12);
+                  setMarginLeft(12);
+                  setMarginRight(12);
+                }}
+                className="text-[9px] font-mono px-2 py-0.5 rounded bg-[#10141D] hover:bg-[#1A2333] text-cyan-300 border border-cyan-800/60"
+              >
+                Digital Safe 12mm
+              </button>
+            </div>
 
             {/* Cut Spacing / Padding around each cut item (Gutters) */}
             <div className="p-3 rounded-xl bg-[#0D121B] border border-cyan-800/40 space-y-2.5">
@@ -1479,11 +1503,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={handleToggleGuttersLinked}
-                  className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border transition-all cursor-pointer ${
-                    guttersLinked
+                  className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border transition-all cursor-pointer ${guttersLinked
                       ? 'bg-cyan-950 border-cyan-600 text-cyan-300 font-bold'
                       : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                   title={guttersLinked ? 'Cut gaps are linked together' : 'Cut gaps are independent'}
                 >
                   {guttersLinked ? <Link2 className="w-3 h-3 text-cyan-400" /> : <Unlink className="w-3 h-3 text-slate-500" />}
@@ -1571,11 +1594,10 @@ export default function ImpositionSection({
                     key={p.label}
                     type="button"
                     onClick={() => handleQuickGutterPreset(p.val)}
-                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-all cursor-pointer ${
-                      gutterX === p.val && gutterY === p.val
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition-all cursor-pointer ${gutterX === p.val && gutterY === p.val
                         ? 'bg-cyan-500 text-black font-bold'
                         : 'bg-[#141C2A] text-slate-400 hover:text-white border border-[#233045]'
-                    }`}
+                      }`}
                   >
                     {p.label}
                   </button>
@@ -1625,11 +1647,10 @@ export default function ImpositionSection({
                 <button
                   type="button"
                   onClick={() => setShowCameraOptions(!showCameraOptions)}
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all flex items-center gap-1 cursor-pointer ${
-                    showCameraOptions
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all flex items-center gap-1 cursor-pointer ${showCameraOptions
                       ? 'bg-cyan-500 text-black font-bold border-cyan-400'
                       : 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-700 text-cyan-300'
-                  }`}
+                    }`}
                   title="Configure Camera Marks"
                 >
                   <Settings2 className="w-3 h-3" />
@@ -1648,10 +1669,6 @@ export default function ImpositionSection({
                 <span className="flex items-center gap-1 text-cyan-300 font-semibold">
                   <Camera className="w-3.5 h-3.5" /> Camera Marks
                 </span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={registrationMarks} onChange={(e) => setRegistrationMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                <span>Registration Targets</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={colorBars} onChange={(e) => setColorBars(e.target.checked)} className="rounded accent-cyan-400" />
@@ -1731,11 +1748,10 @@ export default function ImpositionSection({
                         key={sz.val}
                         type="button"
                         onClick={() => setCameraMarkRadius(sz.val)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
-                          cameraMarkRadius === sz.val
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${cameraMarkRadius === sz.val
                             ? 'bg-cyan-500 text-black font-bold border-cyan-400'
                             : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
-                        }`}
+                          }`}
                       >
                         {sz.label}
                       </button>
@@ -1780,11 +1796,10 @@ export default function ImpositionSection({
                         key={off.val}
                         type="button"
                         onClick={() => setCameraMarkOffset(off.val)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
-                          cameraMarkOffset === off.val
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${cameraMarkOffset === off.val
                             ? 'bg-cyan-500 text-black font-bold border-cyan-400'
                             : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
-                        }`}
+                          }`}
                       >
                         {off.label}
                       </button>
@@ -1801,11 +1816,10 @@ export default function ImpositionSection({
                     <button
                       type="button"
                       onClick={() => setCameraMarkPositions('CORNERS_AND_EDGES')}
-                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${
-                        cameraMarkPositions === 'CORNERS_AND_EDGES'
+                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${cameraMarkPositions === 'CORNERS_AND_EDGES'
                           ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
                           : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
-                      }`}
+                        }`}
                     >
                       <div className="text-[11px] font-mono">4 Corners + Mid Edges</div>
                       <div className="text-[9px] text-slate-500">8 fiducials (Large Format / Zünd)</div>
@@ -1813,11 +1827,10 @@ export default function ImpositionSection({
                     <button
                       type="button"
                       onClick={() => setCameraMarkPositions('CORNERS')}
-                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${
-                        cameraMarkPositions === 'CORNERS'
+                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${cameraMarkPositions === 'CORNERS'
                           ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
                           : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
-                      }`}
+                        }`}
                     >
                       <div className="text-[11px] font-mono">4 Corners Only</div>
                       <div className="text-[9px] text-slate-500">Perimeter registration</div>
@@ -1843,11 +1856,10 @@ export default function ImpositionSection({
           <button
             onClick={handleRunImposition}
             disabled={imposing}
-            className={`w-full py-4 px-6 rounded-2xl font-bold font-mono text-sm tracking-wide uppercase transition-all shadow-xl flex items-center justify-center gap-2.5 ${
-              partMode === 'COVER'
+            className={`w-full py-4 px-6 rounded-2xl font-bold font-mono text-sm tracking-wide uppercase transition-all shadow-xl flex items-center justify-center gap-2.5 ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-amber-500/20'
                 : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-cyan-500/20'
-            } disabled:opacity-50 disabled:pointer-events-none`}
+              } disabled:opacity-50 disabled:pointer-events-none`}
           >
             {imposing ? (
               <>
@@ -1902,7 +1914,6 @@ export default function ImpositionSection({
             cropMarks={cropMarks}
             cropMarkLength={cropMarkLength}
             cropMarkOffset={cropMarkOffset}
-            registrationMarks={registrationMarks}
             colorBars={colorBars}
             cameraMarks={cameraMarks}
             cameraMarkRadius={cameraMarkRadius}

@@ -1,16 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import Navbar from './components/Navbar';
 import WorkflowSteps from './components/WorkflowSteps';
 import UploadSection from './components/UploadSection';
-import AnalysisSection from './components/AnalysisSection';
-import ValidationSection from './components/ValidationSection';
-import CropSection from './components/CropSection';
-import ImpositionSection from './components/ImpositionSection';
-import PdfCanvasViewer from './components/PdfCanvasViewer';
 import ConsoleDrawer from './components/ConsoleDrawer';
-import LoginView from './components/LoginView';
-import HistoryModal from './components/HistoryModal';
 import { checkBackendHealth, getJobDetails } from './services/api';
+
+// Code-splitting via React.lazy for optimized initial bundle loading & rapid startup
+const AnalysisSection = lazy(() => import('./components/AnalysisSection'));
+const ValidationSection = lazy(() => import('./components/ValidationSection'));
+const CropSection = lazy(() => import('./components/CropSection'));
+const ImpositionSection = lazy(() => import('./components/ImpositionSection'));
+const PdfCanvasViewer = lazy(() => import('./components/PdfCanvasViewer'));
+const LoginView = lazy(() => import('./components/LoginView'));
+const HistoryModal = lazy(() => import('./components/HistoryModal'));
+
+// Premium Skeleton Fallback Loader
+function PrepressSuspenseFallback({ label = "Loading workflow module..." }) {
+  return (
+    <div className="w-full py-16 flex flex-col items-center justify-center space-y-3">
+      <div className="w-10 h-10 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
+      <p className="text-xs font-mono text-cyan-400/80 animate-pulse">{label}</p>
+    </div>
+  );
+}
 
 export default function App() {
   // ─── Authentication State ───────────────────────────────────────────────
@@ -44,72 +56,66 @@ export default function App() {
     { time: new Date().toLocaleTimeString(), type: 'INFO', message: 'Prepress Studio initialized. Ready for PDF ingestion.' }
   ]);
 
-  const addLog = (type, message) => {
+  const addLog = useCallback((type, message) => {
     setLogs((prev) => [
       ...prev,
       { time: new Date().toLocaleTimeString(), type, message }
     ]);
-  };
+  }, []);
 
   // Backend Health Ping
   useEffect(() => {
+    let isMounted = true;
     const verifyHealth = async () => {
       const healthy = await checkBackendHealth();
-      setIsBackendOnline(healthy);
+      if (isMounted) setIsBackendOnline(healthy);
     };
 
     verifyHealth();
-    const interval = setInterval(verifyHealth, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(verifyHealth, 12000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Login handler
-  const handleLoginSuccess = (userData) => {
+  const handleLoginSuccess = useCallback((userData) => {
     setUser(userData);
     addLog('SUCCESS', `Operator authenticated: ${userData.username} (${userData.role})`);
-  };
+  }, [addLog]);
 
-  // Logout handler
-  const handleLogout = () => {
-    if (window.confirm("Are you sure you want to sign out of Prepress Studio?")) {
-      localStorage.removeItem('prepress_auth_token');
-      localStorage.removeItem('prepress_auth_user');
-      setUser(null);
-      handleReset();
-    }
-  };
-
-  // Step Handlers
-  const handleUploadSuccess = (job, file) => {
+  // Step Handlers with useCallback optimization
+  const handleUploadSuccess = useCallback((job, file) => {
     setActiveJob(job);
     setUploadedFile(file);
     addLog('SUCCESS', `PDF Uploaded: ${file.name} (Job ID: #${job.jobId}) stored in GridFS`);
     setMaxAllowedStep(2);
     setCurrentStep(2);
-  };
+  }, [addLog]);
 
-  const handleAnalysisSuccess = (analysis) => {
+  const handleAnalysisSuccess = useCallback((analysis) => {
     setAnalysisData(analysis);
     addLog('SUCCESS', `Preflight Analysis complete: ${analysis.pageCount || 1} pages parsed`);
-    if (maxAllowedStep < 3) setMaxAllowedStep(3);
-  };
+    setMaxAllowedStep((prev) => (prev < 3 ? 3 : prev));
+  }, [addLog]);
 
-  const handleValidationSuccess = (validation) => {
+  const handleValidationSuccess = useCallback((validation) => {
     setValidationData(validation);
     addLog('SUCCESS', `Preflight Validation complete. Status: ${validation.valid ? 'VALIDATED' : 'WARNING'}`);
-    if (maxAllowedStep < 4) setMaxAllowedStep(4);
-  };
+    setMaxAllowedStep((prev) => (prev < 4 ? 4 : prev));
+  }, [addLog]);
 
-  const handleCropSuccess = (cropResult) => {
+  const handleCropSuccess = useCallback((cropResult) => {
     setCropData(cropResult);
     if (cropResult.outputFileId) {
       setActiveJob((prev) => ({ ...prev, outputFileId: cropResult.outputFileId, status: 'CROPPED' }));
     }
-    addLog('SUCCESS', `Precision Crop applied to job #${activeJob?.jobId.slice(-6)}`);
-    if (maxAllowedStep < 5) setMaxAllowedStep(5);
-  };
+    addLog('SUCCESS', `Precision Crop applied to job`);
+    setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+  }, [addLog]);
 
-  const handleImpositionSuccess = (res) => {
+  const handleImpositionSuccess = useCallback((res) => {
     setImpositionData(res);
     if (res.outputFileId) {
       setActiveJob((prev) => ({ ...prev, outputFileId: res.outputFileId, status: 'COMPLETED' }));
@@ -117,9 +123,9 @@ export default function App() {
     addLog('SUCCESS', `N-Up Imposition sheet generated (Output File ID: #${res.outputFileId?.slice(-6)})`);
     setMaxAllowedStep(6);
     setCurrentStep(6);
-  };
+  }, [addLog]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setCurrentStep(1);
     setMaxAllowedStep(1);
     setActiveJob(null);
@@ -129,10 +135,20 @@ export default function App() {
     setCropData(null);
     setImpositionData(null);
     addLog('INFO', 'Reset workspace. Prepared for new PDF job.');
-  };
+  }, [addLog]);
 
-  // ─── Load Job from Archives (Upload History) ───────────────────────────
-  const handleLoadJob = (job) => {
+  // Logout handler
+  const handleLogout = useCallback(() => {
+    if (window.confirm("Are you sure you want to sign out of Prepress Studio?")) {
+      localStorage.removeItem('prepress_auth_token');
+      localStorage.removeItem('prepress_auth_user');
+      setUser(null);
+      handleReset();
+    }
+  }, [handleReset]);
+
+  // Load Job from Archives (Upload History)
+  const handleLoadJob = useCallback((job) => {
     setActiveJob({
       jobId: job.jobId,
       originalFileName: job.originalFileName,
@@ -161,10 +177,10 @@ export default function App() {
       setMaxAllowedStep(2);
       setCurrentStep(2);
     }
-  };
+  }, [addLog]);
 
-  // ─── Inspect Output from Archives (Output History) ──────────────────────
-  const handleInspectOutput = (outputItem) => {
+  // Inspect Output from Archives (Output History)
+  const handleInspectOutput = useCallback((outputItem) => {
     setActiveJob({
       jobId: outputItem.jobId,
       originalFileName: outputItem.originalFileName,
@@ -176,10 +192,10 @@ export default function App() {
     setMaxAllowedStep(6);
     setCurrentStep(6);
     addLog('SUCCESS', `Inspecting imposed output #${outputItem.outputFileId.slice(-6).toUpperCase()}`);
-  };
+  }, [addLog]);
 
-  // ─── Reimpose Job from Output History ───────────────────────────────────
-  const handleReimposeJob = async (outputItem) => {
+  // Reimpose Job from Output History
+  const handleReimposeJob = useCallback(async (outputItem) => {
     try {
       const res = await getJobDetails(outputItem.jobId);
       if (res.success && res.job) {
@@ -191,22 +207,28 @@ export default function App() {
     } catch (err) {
       addLog('ERROR', `Could not reload job for re-imposition: ${err.message}`);
     }
-  };
+  }, [handleLoadJob, addLog]);
 
-  // If user is not authenticated, show Login Screen
+  // Memoized user info
+  const userHeader = useMemo(() => user, [user]);
+
+  // If user is not authenticated, show Login Screen via Suspense
   if (!user) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <Suspense fallback={<PrepressSuspenseFallback label="Loading Secure Prepress Login..." />}>
+        <LoginView onLoginSuccess={handleLoginSuccess} />
+      </Suspense>
+    );
   }
 
   return (
-    <div className="min-[#100%] min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans pb-16">
-      
+    <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans pb-16">
       {/* Unified Navigation Header */}
       <Navbar
         isBackendOnline={isBackendOnline}
         activeJob={activeJob}
         currentStep={currentStep}
-        user={user}
+        user={userHeader}
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onLogout={handleLogout}
@@ -219,87 +241,93 @@ export default function App() {
         maxAllowedStep={maxAllowedStep}
       />
 
-      {/* Main Dynamic Viewport */}
+      {/* Main Dynamic Viewport with Suspense Lazy Loading */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
-        {currentStep === 1 && (
-          <UploadSection 
-            onUploadSuccess={handleUploadSuccess} 
-            onOpenHistory={() => setIsHistoryOpen(true)}
-          />
-        )}
+        <Suspense fallback={<PrepressSuspenseFallback label="Initializing prepress module..." />}>
+          {currentStep === 1 && (
+            <UploadSection
+              onUploadSuccess={handleUploadSuccess}
+              onOpenHistory={() => setIsHistoryOpen(true)}
+            />
+          )}
 
-        {currentStep === 2 && activeJob && (
-          <AnalysisSection
-            jobId={activeJob.jobId}
-            analysisData={analysisData}
-            onAnalysisSuccess={handleAnalysisSuccess}
-            onProceedToValidation={() => {
-              if (maxAllowedStep < 3) setMaxAllowedStep(3);
-              setCurrentStep(3);
-            }}
-          />
-        )}
+          {currentStep === 2 && activeJob && (
+            <AnalysisSection
+              jobId={activeJob.jobId}
+              analysisData={analysisData}
+              onAnalysisSuccess={handleAnalysisSuccess}
+              onProceedToValidation={() => {
+                setMaxAllowedStep((prev) => (prev < 3 ? 3 : prev));
+                setCurrentStep(3);
+              }}
+            />
+          )}
 
-        {currentStep === 3 && activeJob && (
-          <ValidationSection
-            jobId={activeJob.jobId}
-            validationData={validationData}
-            onValidationSuccess={handleValidationSuccess}
-            onProceedToCrop={() => {
-              if (maxAllowedStep < 4) setMaxAllowedStep(4);
-              setCurrentStep(4);
-            }}
-            onProceedToImposition={() => {
-              if (maxAllowedStep < 5) setMaxAllowedStep(5);
-              setCurrentStep(5);
-            }}
-          />
-        )}
+          {currentStep === 3 && activeJob && (
+            <ValidationSection
+              jobId={activeJob.jobId}
+              validationData={validationData}
+              onValidationSuccess={handleValidationSuccess}
+              onProceedToCrop={() => {
+                setMaxAllowedStep((prev) => (prev < 4 ? 4 : prev));
+                setCurrentStep(4);
+              }}
+              onProceedToImposition={() => {
+                setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+                setCurrentStep(5);
+              }}
+            />
+          )}
 
-        {currentStep === 4 && activeJob && (
-          <CropSection
-            jobId={activeJob.jobId}
-            analysisData={analysisData}
-            onCropSuccess={handleCropSuccess}
-            onProceedToImposition={() => {
-              if (maxAllowedStep < 5) setMaxAllowedStep(5);
-              setCurrentStep(5);
-            }}
-          />
-        )}
+          {currentStep === 4 && activeJob && (
+            <CropSection
+              jobId={activeJob.jobId}
+              analysisData={analysisData}
+              onCropSuccess={handleCropSuccess}
+              onProceedToImposition={() => {
+                setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+                setCurrentStep(5);
+              }}
+            />
+          )}
 
-        {currentStep === 5 && activeJob && (
-          <ImpositionSection
-            jobId={activeJob.jobId}
-            analysisData={analysisData}
-            uploadedFile={uploadedFile}
-            activeJob={activeJob}
-            onImpositionSuccess={handleImpositionSuccess}
-            onProceedToOutput={() => setCurrentStep(6)}
-          />
-        )}
+          {currentStep === 5 && activeJob && (
+            <ImpositionSection
+              jobId={activeJob.jobId}
+              analysisData={analysisData}
+              uploadedFile={uploadedFile}
+              activeJob={activeJob}
+              onImpositionSuccess={handleImpositionSuccess}
+              onProceedToOutput={() => setCurrentStep(6)}
+            />
+          )}
 
-        {currentStep === 6 && activeJob && (
-          <PdfCanvasViewer
-            jobId={activeJob.jobId}
-            outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
-            activeJob={activeJob}
-            onReset={handleReset}
-          />
-        )}
+          {currentStep === 6 && activeJob && (
+            <PdfCanvasViewer
+              jobId={activeJob.jobId}
+              outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
+              activeJob={activeJob}
+              onReset={handleReset}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* Telemetry Log Drawer */}
       <ConsoleDrawer logs={logs} />
 
-      {/* Dual Column History Modal (Upload History on Left, Output History on Right) */}
-      <HistoryModal
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
-        onLoadJob={handleLoadJob}
-        onInspectOutput={handleInspectOutput}
-        onReimposeJob={handleReimposeJob}
-      />
+      {/* Dual Column History Modal (Lazy Loaded) */}
+      {isHistoryOpen && (
+        <Suspense fallback={<PrepressSuspenseFallback label="Loading Job Archives..." />}>
+          <HistoryModal
+            isOpen={isHistoryOpen}
+            onClose={() => setIsHistoryOpen(false)}
+            onLoadJob={handleLoadJob}
+            onInspectOutput={handleInspectOutput}
+            onReimposeJob={handleReimposeJob}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  Download, 
-  Eye, 
-  ZoomIn, 
-  ZoomOut, 
-  CheckCircle2, 
-  ExternalLink, 
-  ShieldCheck, 
+import {
+  Download,
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  CheckCircle2,
+  ExternalLink,
+  ShieldCheck,
   RefreshCw,
   ChevronLeft,
   ChevronRight
@@ -75,7 +75,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
-        } catch {}
+        } catch { }
       }
     };
   }, [pdfUrl]);
@@ -88,7 +88,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
-        } catch {}
+        } catch { }
       }
 
       const page = await pdfDocRef.current.getPage(currentPage);
@@ -143,7 +143,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
 
   return (
     <div className="w-full max-w-6xl mx-auto py-6 px-4">
-      
+
       {/* Top Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-[#131B28] border border-[#222E42] p-5 rounded-2xl text-left">
         <div className="flex items-center gap-4">
@@ -186,10 +186,10 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
 
       {/* Main Preview Workbench */}
       <div className="bg-[#111622] border border-[#212C3D] rounded-2xl overflow-hidden shadow-2xl">
-        
+
         {/* Toolbar */}
         <div className="bg-[#171F2C] border-b border-[#243144] px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
-          
+
           {/* Left: HD Status & Page Nav */}
           <div className="flex items-center gap-3 text-xs font-mono text-slate-300">
             <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
@@ -251,7 +251,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
 
         {/* Embedded Canvas Container */}
         <div className="p-6 bg-[#0A0D14] flex justify-center items-center min-h-[620px] overflow-auto relative">
-          
+
           {loading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0A0D14]/80 z-10 gap-3">
               <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
@@ -291,11 +291,10 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
                 <button
                   key={i}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={`px-3 py-1 text-xs font-mono rounded-lg border transition-all ${
-                    isSelected
+                  className={`px-3 py-1 text-xs font-mono rounded-lg border transition-all ${isSelected
                       ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300 font-bold'
                       : 'bg-[#182130] border-[#29384E] text-slate-400 hover:text-slate-200'
-                  }`}
+                    }`}
                 >
                   Sheet {sheetNum} ({sideLabel})
                 </button>

@@ -10,24 +10,24 @@ const PATTERN_16PP_MAP = {
   cols: 4,
   rows: 2,
   front: [
-    { page: 5,  row: 0, col: 0, rot: 180 },
+    { page: 5, row: 0, col: 0, rot: 180 },
     { page: 12, row: 0, col: 1, rot: 180 },
-    { page: 9,  row: 0, col: 2, rot: 180 },
-    { page: 8,  row: 0, col: 3, rot: 180 },
-    { page: 4,  row: 1, col: 0, rot: 0 },
+    { page: 9, row: 0, col: 2, rot: 180 },
+    { page: 8, row: 0, col: 3, rot: 180 },
+    { page: 4, row: 1, col: 0, rot: 0 },
     { page: 13, row: 1, col: 1, rot: 0 },
     { page: 16, row: 1, col: 2, rot: 0 },
-    { page: 1,  row: 1, col: 3, rot: 0 },
+    { page: 1, row: 1, col: 3, rot: 0 },
   ],
   back: [
-    { page: 7,  row: 0, col: 0, rot: 180 },
+    { page: 7, row: 0, col: 0, rot: 180 },
     { page: 10, row: 0, col: 1, rot: 180 },
     { page: 11, row: 0, col: 2, rot: 180 },
-    { page: 6,  row: 0, col: 3, rot: 180 },
-    { page: 2,  row: 1, col: 0, rot: 0 },
+    { page: 6, row: 0, col: 3, rot: 180 },
+    { page: 2, row: 1, col: 0, rot: 0 },
     { page: 15, row: 1, col: 1, rot: 0 },
     { page: 14, row: 1, col: 2, rot: 0 },
-    { page: 3,  row: 1, col: 3, rot: 0 },
+    { page: 3, row: 1, col: 3, rot: 0 },
   ]
 };
 
@@ -36,16 +36,16 @@ const PATTERN_32PP_MAP = {
   cols: 4,
   rows: 4,
   front: [
-    { page: 5,  row: 0, col: 0, rot: 180 }, { page: 28, row: 0, col: 1, rot: 180 }, { page: 21, row: 0, col: 2, rot: 180 }, { page: 12, row: 0, col: 3, rot: 180 },
-    { page: 4,  row: 1, col: 0, rot: 0 },   { page: 29, row: 1, col: 1, rot: 0 },   { page: 20, row: 1, col: 2, rot: 0 },   { page: 13, row: 1, col: 3, rot: 0 },
-    { page: 8,  row: 2, col: 0, rot: 180 }, { page: 25, row: 2, col: 1, rot: 180 }, { page: 24, row: 2, col: 2, rot: 180 }, { page: 9,  row: 2, col: 3, rot: 180 },
-    { page: 1,  row: 3, col: 0, rot: 0 },   { page: 32, row: 3, col: 1, rot: 0 },   { page: 17, row: 3, col: 2, rot: 0 },   { page: 16, row: 3, col: 3, rot: 0 }
+    { page: 5, row: 0, col: 0, rot: 180 }, { page: 28, row: 0, col: 1, rot: 180 }, { page: 21, row: 0, col: 2, rot: 180 }, { page: 12, row: 0, col: 3, rot: 180 },
+    { page: 4, row: 1, col: 0, rot: 0 }, { page: 29, row: 1, col: 1, rot: 0 }, { page: 20, row: 1, col: 2, rot: 0 }, { page: 13, row: 1, col: 3, rot: 0 },
+    { page: 8, row: 2, col: 0, rot: 180 }, { page: 25, row: 2, col: 1, rot: 180 }, { page: 24, row: 2, col: 2, rot: 180 }, { page: 9, row: 2, col: 3, rot: 180 },
+    { page: 1, row: 3, col: 0, rot: 0 }, { page: 32, row: 3, col: 1, rot: 0 }, { page: 17, row: 3, col: 2, rot: 0 }, { page: 16, row: 3, col: 3, rot: 0 }
   ],
   back: [
-    { page: 11, row: 0, col: 0, rot: 180 }, { page: 22, row: 0, col: 1, rot: 180 }, { page: 27, row: 0, col: 2, rot: 180 }, { page: 6,  row: 0, col: 3, rot: 180 },
-    { page: 14, row: 1, col: 0, rot: 0 },   { page: 19, row: 1, col: 1, rot: 0 },   { page: 30, row: 1, col: 2, rot: 0 },   { page: 3,  row: 1, col: 3, rot: 0 },
-    { page: 10, row: 2, col: 0, rot: 180 }, { page: 23, row: 2, col: 1, rot: 180 }, { page: 26, row: 2, col: 2, rot: 180 }, { page: 7,  row: 2, col: 3, rot: 180 },
-    { page: 15, row: 3, col: 0, rot: 0 },   { page: 18, row: 3, col: 1, rot: 0 },   { page: 31, row: 3, col: 2, rot: 0 },   { page: 2,  row: 3, col: 3, rot: 0 }
+    { page: 11, row: 0, col: 0, rot: 180 }, { page: 22, row: 0, col: 1, rot: 180 }, { page: 27, row: 0, col: 2, rot: 180 }, { page: 6, row: 0, col: 3, rot: 180 },
+    { page: 14, row: 1, col: 0, rot: 0 }, { page: 19, row: 1, col: 1, rot: 0 }, { page: 30, row: 1, col: 2, rot: 0 }, { page: 3, row: 1, col: 3, rot: 0 },
+    { page: 10, row: 2, col: 0, rot: 180 }, { page: 23, row: 2, col: 1, rot: 180 }, { page: 26, row: 2, col: 2, rot: 180 }, { page: 7, row: 2, col: 3, rot: 180 },
+    { page: 15, row: 3, col: 0, rot: 0 }, { page: 18, row: 3, col: 1, rot: 0 }, { page: 31, row: 3, col: 2, rot: 0 }, { page: 2, row: 3, col: 3, rot: 0 }
   ]
 };
 
@@ -157,16 +157,6 @@ function CropMarksSVG({ x, y, length, offset, cellW, cellH }) {
   return <path d={marks.join(' ')} stroke="#222" strokeWidth="0.3" fill="none" />;
 }
 
-function RegistrationMark({ cx, cy, size = 3 }) {
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={size} fill="none" stroke="#222" strokeWidth="0.25" />
-      <circle cx={cx} cy={cy} r={size * 0.3} fill="#222" />
-      <line x1={cx - size * 1.5} y1={cy} x2={cx + size * 1.5} y2={cy} stroke="#222" strokeWidth="0.2" />
-      <line x1={cx} y1={cy - size * 1.5} x2={cx} y2={cy + size * 1.5} stroke="#222" strokeWidth="0.2" />
-    </g>
-  );
-}
 
 function ColorBar({ x, y, width, height }) {
   const colors = [
@@ -230,7 +220,6 @@ export default function SheetPreview({
   cropMarks = true,
   cropMarkLength = 5,
   cropMarkOffset = 3,
-  registrationMarks = true,
   colorBars = true,
   cameraMarks = true,
   cameraMarkRadius = 5,
@@ -437,22 +426,20 @@ export default function SheetPreview({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setActiveSide('FRONT')}
-            className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg border transition-all ${
-              activeSide === 'FRONT'
+            className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg border transition-all ${activeSide === 'FRONT'
                 ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300 shadow-sm shadow-cyan-500/10'
                 : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             {partMode === 'COVER' ? 'OUTSIDE COVER' : 'FRONT SIDE'}
           </button>
           {isDuplex && (
             <button
               onClick={() => setActiveSide('BACK')}
-              className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg border transition-all ${
-                activeSide === 'BACK'
+              className={`px-3 py-1.5 text-xs font-mono font-bold rounded-lg border transition-all ${activeSide === 'BACK'
                   ? 'bg-indigo-500/20 border-indigo-500/60 text-indigo-300 shadow-sm shadow-indigo-500/10'
                   : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-slate-200'
-              }`}
+                }`}
             >
               {partMode === 'COVER' ? 'INSIDE COVER' : 'BACK SIDE'}
             </button>
@@ -496,11 +483,10 @@ export default function SheetPreview({
           {thumbnails && thumbnails.length > 0 && (
             <button
               onClick={() => setShowArtwork(!showArtwork)}
-              className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border transition-all flex items-center gap-1.5 ${
-                showArtwork
+              className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border transition-all flex items-center gap-1.5 ${showArtwork
                   ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300'
                   : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-slate-200'
-              }`}
+                }`}
               title="Toggle between real PDF artwork preview and schematic layout"
             >
               {showArtwork ? <Eye className="w-3 h-3 text-emerald-400" /> : <EyeOff className="w-3 h-3 text-slate-400" />}
@@ -516,11 +502,10 @@ export default function SheetPreview({
             <button
               key={t.label}
               onClick={() => t.set(!t.state)}
-              className={`px-2 py-1 text-[9px] font-mono rounded border transition-all ${
-                t.state
+              className={`px-2 py-1 text-[9px] font-mono rounded border transition-all ${t.state
                   ? 'bg-[#1A2436] border-cyan-800/50 text-cyan-400'
                   : 'bg-[#10141D] border-[#233045] text-slate-500'
-              }`}
+                }`}
             >
               {t.label}
             </button>
@@ -1007,37 +992,104 @@ export default function SheetPreview({
             </g>
           )}
 
-          {/* Registration marks (Plate alignment crosshairs) */}
-          {registrationMarks && (
-            <>
-              <RegistrationMark cx={pad + sw / 2} cy={pad + 5} size={3} />
-              <RegistrationMark cx={pad + sw / 2} cy={pad + sh - 5} size={3} />
-              <RegistrationMark cx={pad + 5} cy={pad + sh / 2} size={3} />
-              <RegistrationMark cx={pad + sw - 5} cy={pad + sh / 2} size={3} />
-            </>
-          )}
-
-          {/* Optical Camera Marks (5 mm radius circle filled with color with outer border) */}
+          {/* Optical Camera Marks (Safely positioned strictly within waste margins - NEVER overlapping book page) */}
           {cameraMarks && (() => {
-            const camRad = parseFloat(cameraMarkRadius) || (parseFloat(cameraMarkSize) ? (parseFloat(cameraMarkSize) <= 6 ? parseFloat(cameraMarkSize) : parseFloat(cameraMarkSize) / 2) : 5) || 5;
-            const camOff = Math.max(camRad + 2, parseFloat(cameraMarkOffset) || 8);
+            const ml = parseFloat(marginLeft) || 0;
+            const mr = parseFloat(marginRight) || 0;
+            const mt = parseFloat(marginTop) || 0;
+            const mb = parseFloat(marginBottom) || 0;
+            let camRad = parseFloat(cameraMarkRadius) || (parseFloat(cameraMarkSize) ? (parseFloat(cameraMarkSize) <= 6 ? parseFloat(cameraMarkSize) : parseFloat(cameraMarkSize) / 2) : 5) || 5;
+            const clearance = 1.0; // 1mm safety gap from page content edges
+            let effRad = camRad + 1.5;
+
+            // Check margins
+            const minMargin = Math.min(ml, mr, mt, mb);
+            if (minMargin < effRad * 2 + clearance) {
+              camRad = Math.max(1.5, (minMargin / 2) - clearance - 0.5);
+              effRad = camRad + 1.0;
+            }
+
+            // Book pages bounding box in SVG coordinate space
+            const pageBox = {
+              left: pad + ml - clearance,
+              right: pad + sw - mr + clearance,
+              top: pad + mt - clearance,
+              bottom: pad + sh - mb + clearance
+            };
+
+            const collidesWithBookPage = (x, y, r) => {
+              return (
+                x + r > pageBox.left &&
+                x - r < pageBox.right &&
+                y + r > pageBox.top &&
+                y - r < pageBox.bottom
+              );
+            };
+
+            const fiducials = [];
             const showEdges = cameraMarkPositions !== 'CORNERS';
+
+            // Top-Left Corner
+            const tlX = ml > effRad * 2 ? pad + ml / 2 : pad + effRad + clearance;
+            const tlY = mt > effRad * 2 ? pad + mt / 2 : pad + effRad + clearance;
+            if (!collidesWithBookPage(tlX, tlY, effRad)) {
+              fiducials.push({ cx: tlX, cy: tlY });
+            }
+
+            // Top-Right Corner
+            const trX = mr > effRad * 2 ? pad + sw - mr / 2 : pad + sw - effRad - clearance;
+            const trY = mt > effRad * 2 ? pad + mt / 2 : pad + effRad + clearance;
+            if (!collidesWithBookPage(trX, trY, effRad)) {
+              fiducials.push({ cx: trX, cy: trY });
+            }
+
+            // Bottom-Left Corner
+            const blX = ml > effRad * 2 ? pad + ml / 2 : pad + effRad + clearance;
+            const blY = mb > effRad * 2 ? pad + sh - mb / 2 : pad + sh - effRad - clearance;
+            if (!collidesWithBookPage(blX, blY, effRad)) {
+              fiducials.push({ cx: blX, cy: blY });
+            }
+
+            // Bottom-Right Corner
+            const brX = mr > effRad * 2 ? pad + sw - mr / 2 : pad + sw - effRad - clearance;
+            const brY = mb > effRad * 2 ? pad + sh - mb / 2 : pad + sh - effRad - clearance;
+            if (!collidesWithBookPage(brX, brY, effRad)) {
+              fiducials.push({ cx: brX, cy: brY });
+            }
+
+            // Mid-Edge fiducials (strictly within waste margin strips)
+            if (showEdges) {
+              // Top edge
+              if (mt >= effRad * 2 + clearance * 2) {
+                const topX = pad + sw / 2;
+                const topY = pad + mt / 2;
+                if (!collidesWithBookPage(topX, topY, effRad)) fiducials.push({ cx: topX, cy: topY });
+              }
+              // Bottom edge
+              if (mb >= effRad * 2 + clearance * 2) {
+                const botX = pad + sw / 2;
+                const botY = pad + sh - mb / 2;
+                if (!collidesWithBookPage(botX, botY, effRad)) fiducials.push({ cx: botX, cy: botY });
+              }
+              // Left edge
+              if (ml >= effRad * 2 + clearance * 2) {
+                const leftX = pad + ml / 2;
+                const leftY = pad + sh / 2;
+                if (!collidesWithBookPage(leftX, leftY, effRad)) fiducials.push({ cx: leftX, cy: leftY });
+              }
+              // Right edge
+              if (mr >= effRad * 2 + clearance * 2) {
+                const rightX = pad + sw - mr / 2;
+                const rightY = pad + sh / 2;
+                if (!collidesWithBookPage(rightX, rightY, effRad)) fiducials.push({ cx: rightX, cy: rightY });
+              }
+            }
+
             return (
               <>
-                {/* 4 Corners */}
-                <CameraMark cx={pad + camOff} cy={pad + camOff} radius={camRad} />
-                <CameraMark cx={pad + sw - camOff} cy={pad + camOff} radius={camRad} />
-                <CameraMark cx={pad + camOff} cy={pad + sh - camOff} radius={camRad} />
-                <CameraMark cx={pad + sw - camOff} cy={pad + sh - camOff} radius={camRad} />
-                {/* Mid-edge fiducials */}
-                {showEdges && (
-                  <>
-                    <CameraMark cx={pad + sw / 2} cy={pad + camOff} radius={camRad} />
-                    <CameraMark cx={pad + sw / 2} cy={pad + sh - camOff} radius={camRad} />
-                    <CameraMark cx={pad + camOff} cy={pad + sh / 2} radius={camRad} />
-                    <CameraMark cx={pad + sw - camOff} cy={pad + sh / 2} radius={camRad} />
-                  </>
-                )}
+                {fiducials.map((f, i) => (
+                  <CameraMark key={i} cx={f.cx} cy={f.cy} radius={camRad} />
+                ))}
               </>
             );
           })()}
@@ -1075,11 +1127,10 @@ export default function SheetPreview({
               <button
                 key={i}
                 onClick={() => onSheetChange?.(i)}
-                className={`px-3 py-1.5 text-xs font-mono rounded-lg border shrink-0 transition-all ${
-                  isSelected
+                className={`px-3 py-1.5 text-xs font-mono rounded-lg border shrink-0 transition-all ${isSelected
                     ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300 font-bold shadow-sm'
                     : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-slate-200 hover:bg-[#1A2436]'
-                }`}
+                  }`}
               >
                 Sig {i + 1} ({sigStart}–{sigEnd})
               </button>
