@@ -215,6 +215,8 @@ export default function ImpositionSection({
   const [cameraMarkPositions, setCameraMarkPositions] = useState('CORNERS_AND_EDGES'); // 'CORNERS_AND_EDGES' | 'CORNERS'
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [jobSlug, setJobSlug] = useState(true);
+  const [foldMarks, setFoldMarks] = useState(true);
+  const [digitalBarcode, setDigitalBarcode] = useState(false);
 
   // Switch between Offset Press and Digital Press with smart presets
   const handleSelectPressTechnology = (tech) => {
@@ -230,6 +232,8 @@ export default function ImpositionSection({
       setColorBars(true);
       setJobSlug(true);
       setCollatingMarks(true);
+      setFoldMarks(true);
+      setDigitalBarcode(false);
       setCameraMarks(false);
       setMarginTop(15); // Standard offset lead gripper allowance
       setMarginBottom(10);
@@ -246,6 +250,8 @@ export default function ImpositionSection({
       setColorBars(false);        // Closed-loop digital press calibration
       setJobSlug(true);
       setCollatingMarks(false);
+      setFoldMarks(false);
+      setDigitalBarcode(true);    // Optical barcode for automated digital cutter
       setCameraMarks(true);        // Optical fiducials for automated digital cutter
       setCameraMarkRadius(3.5);    // 3.5 mm radius circle ensures zero overlap with book pages
       setCameraMarkOffset(6);      // 6 mm margin offset
@@ -545,8 +551,15 @@ export default function ImpositionSection({
         cameraMarkOffset: parseFloat(cameraMarkOffset) || 8,
         cameraMarkPositions,
         jobSlug,
-        collatingMarks: partMode === 'TEXT' ? collatingMarks : false
+        collatingMarks: partMode === 'TEXT' ? collatingMarks : false,
+        foldMarks,
+        digitalBarcode,
+        printTechnology
       },
+      creepCompensation: bindingStyle === 'SADDLE_STITCH' ? {
+        enabled: true,
+        amountMm: creepMM
+      } : undefined,
       coverStudio: partMode === 'COVER' ? {
         spineWidth: calculatedSpine,
         hasFlaps,
@@ -571,126 +584,80 @@ export default function ImpositionSection({
   };
 
   return (
-    <div className="w-full max-w-[1550px] mx-auto py-4 px-4">
-      {/* ─── Prepress Header ────────────────────────────────────────────── */}
-      <div className="text-center mb-5">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-950/70 border border-cyan-800/60 text-cyan-300 text-xs font-mono font-medium mb-1.5 shadow-sm">
-          <Grid className="w-3.5 h-3.5" /> PHASE 5: PREPRESS BOOK IMPOSITION STUDIO
-        </div>
-        <h3 className="text-2xl font-bold text-white tracking-tight m-0">Standard Book Imposition Engine</h3>
-        <p className="text-xs text-slate-400 mt-1 max-w-xl mx-auto">
-          Compliant with Kodak Preps & CIP4 standards. Automatically creates signatures, calculates dynamic spines, and generates production press sheets.
-        </p>
-      </div>
-
-      {/* ─── Press Technology Switcher: Offset vs Digital Setup ──────────── */}
-      <div className="max-w-3xl mx-auto mb-6">
-        <div className="bg-[#10141D] border border-[#233045] rounded-2xl p-2.5 shadow-2xl">
-          <div className="flex items-center justify-between px-3 pt-1 pb-2.5">
-            <span className="text-[11px] font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Printer className="w-3.5 h-3.5 text-cyan-400" /> Choose Printing Technology Setup:
-            </span>
-            <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase transition-all ${printTechnology === 'DIGITAL'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-              }`}>
-              {printTechnology === 'DIGITAL' ? '⚡ Digital Press Active (SRA3 • Optical Fiducials)' : '🏭 Offset Press Active (CTP • 4-Plate Reg • Bars)'}
-            </span>
+    <div className="w-full max-w-[1920px] mx-auto py-1 px-1 sm:px-2 space-y-3 font-sans">
+      {/* ─── Compact Glass Control Header Bar ────────────────────────────── */}
+      <div className="glass-panel rounded-2xl px-4 py-2 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        {/* Left: Phase & Active Specs Badge */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-cyan-950/80 border border-cyan-800/60 text-cyan-300 text-xs font-mono font-bold shadow-sm">
+            <Grid className="w-3.5 h-3.5 text-cyan-400" />
+            <span>PHASE 5: IMPOSITION STUDIO</span>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {/* OFFSET PRESS OPTION */}
-            <button
-              type="button"
-              onClick={() => handleSelectPressTechnology('OFFSET')}
-              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${printTechnology === 'OFFSET'
-                  ? 'bg-gradient-to-br from-blue-950/80 via-[#152033] to-[#141C2A] border-blue-500 text-white shadow-lg shadow-blue-500/10 ring-1 ring-blue-500/30'
-                  : 'bg-[#141C2A]/70 border-[#1E293B] text-slate-400 hover:text-white hover:border-[#2B3C57]'
-                }`}
-            >
-              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${printTechnology === 'OFFSET' ? 'bg-blue-500 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
-                }`}>
-                <Printer className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold font-mono tracking-wide text-white">OFFSET PRESS SETUP</span>
-                  {printTechnology === 'OFFSET' && (
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300">
-                      SELECTED
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                  Commercial CTP Plates • 23×36" / B2 Sheet • CMYK Density Bars • 4-Color Reg Targets • Gripper Margin
-                </p>
-              </div>
-            </button>
-
-            {/* DIGITAL PRESS OPTION */}
-            <button
-              type="button"
-              onClick={() => handleSelectPressTechnology('DIGITAL')}
-              className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3.5 cursor-pointer ${printTechnology === 'DIGITAL'
-                  ? 'bg-gradient-to-br from-cyan-950/80 via-[#122830] to-[#141C2A] border-cyan-400 text-white shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/30'
-                  : 'bg-[#141C2A]/70 border-[#1E293B] text-slate-400 hover:text-white hover:border-[#2B3C57]'
-                }`}
-            >
-              <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${printTechnology === 'DIGITAL' ? 'bg-cyan-400 text-black shadow-md' : 'bg-[#1E293B] text-slate-400'
-                }`}>
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold font-mono tracking-wide text-white">DIGITAL PRESS SETUP</span>
-                  {printTechnology === 'DIGITAL' && (
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-cyan-400/20 text-cyan-300">
-                      SELECTED
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                  SRA3 / A3+ • 5 mm Optical Camera Fiducials (Outer Border) • Direct Imaging • Digital Cutter Ready
-                </p>
-              </div>
-            </button>
-          </div>
+          <span className="text-xs text-slate-400 font-mono hidden md:inline">
+            {totalBookPages} Pages • {activePreset.label} ({columns}×{rows}) • {sheetWidth}×{sheetHeight}mm Sheet
+          </span>
         </div>
-      </div>
 
-      {/* ─── Part Switcher: Book Text vs Book Cover ─────────────────────── */}
-      <div className="flex items-center justify-center mb-6">
-        <div className="inline-flex p-1 rounded-xl bg-[#141C2A] border border-[#233045] shadow-lg">
+        {/* Center: Part Mode Switcher (Body Text vs Cover) */}
+        <div className="inline-flex p-1 rounded-xl glass-card border border-white/10 shadow-inner">
           <button
+            type="button"
             onClick={() => { setPartMode('TEXT'); setSignatureIndex(0); }}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${partMode === 'TEXT'
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'TEXT'
                 ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20'
                 : 'text-slate-400 hover:text-slate-200'
               }`}
           >
-            <BookOpen className="w-4 h-4" />
-            Book Text (Body Signatures)
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Book Signatures ({totalSignatures})</span>
           </button>
           <button
+            type="button"
             onClick={() => { setPartMode('COVER'); setSignatureIndex(0); }}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${partMode === 'COVER'
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-500/20'
                 : 'text-slate-400 hover:text-slate-200'
               }`}
           >
-            <Bookmark className="w-4 h-4" />
-            Book Cover Studio (Wraparound Spread)
+            <Bookmark className="w-3.5 h-3.5" />
+            <span>Cover Studio (Spread)</span>
+          </button>
+        </div>
+
+        {/* Right: Printing Technology Setup Switcher */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleSelectPressTechnology('OFFSET')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono transition-all border cursor-pointer ${printTechnology === 'OFFSET'
+                ? 'bg-blue-600 text-white font-bold border-blue-400 shadow-md shadow-blue-500/20'
+                : 'glass-card text-slate-400 hover:text-white border-white/5'
+              }`}
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>OFFSET (CTP)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSelectPressTechnology('DIGITAL')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono transition-all border cursor-pointer ${printTechnology === 'DIGITAL'
+                ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-300 shadow-md shadow-cyan-500/30'
+                : 'glass-card text-slate-400 hover:text-white border-white/5'
+              }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>DIGITAL (OPTICAL)</span>
           </button>
         </div>
       </div>
 
-      {/* ─── Main Studio Grid ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* ─── 3-Panel Industrial Prepress Studio Grid ──────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
 
         {/* ═══════════════════════════════════════════════════════════════════
-            LEFT COLUMN: CONTROLS & SPECIFICATIONS (5 COLS)
+            LEFT COLUMN: PARAMETERS, MARGINS & LAYOUT SCHEMES (3 COLS)
            ═══════════════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className="lg:col-span-3 xl:col-span-3 space-y-3 max-h-[calc(100vh-130px)] overflow-y-auto pr-1">
 
           {/* ─── MODE 1: BOOK TEXT CONTROLS ──────────────────────────────── */}
           {partMode === 'TEXT' && (
@@ -734,66 +701,6 @@ export default function ImpositionSection({
                 <p className="text-[11px] text-slate-400 font-mono mt-1">
                   Active: <strong className="text-cyan-300">{activePreset.name}</strong> — {activePreset.desc}
                 </p>
-              </div>
-
-              {/* Multi-Signature Intelligence Bar */}
-              <div className="bg-gradient-to-br from-[#141C2A] to-[#1A2436] border border-[#233045] rounded-2xl p-4 shadow-xl">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">Multi-Signature Pagination</span>
-                  </div>
-                  <span className="text-xs font-mono text-emerald-400 font-bold">
-                    {totalSignatures} {totalSignatures === 1 ? 'Signature' : 'Signatures'} Auto-Calculated
-                  </span>
-                </div>
-
-                {/* Calculation breakdown */}
-                <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-[#0D121B] border border-[#1E293B] mb-3 text-center">
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-mono block">Book Pages</span>
-                    <strong className="text-sm font-mono text-white">{totalBookPages}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-mono block">Total Capacity</span>
-                    <strong className="text-sm font-mono text-cyan-300">{totalCapacity}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase font-mono block">Blank Padding</span>
-                    <strong className={`text-sm font-mono ${blankPaddingPages > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                      {blankPaddingPages}
-                    </strong>
-                  </div>
-                </div>
-
-                {/* Interactive Signature Switcher */}
-                <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#10141D] border border-[#233045]">
-                  <button
-                    onClick={() => setSignatureIndex(prev => Math.max(0, prev - 1))}
-                    disabled={signatureIndex === 0}
-                    className="p-1.5 rounded-lg bg-[#1A2436] hover:bg-[#233045] text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-
-                  <div className="text-center font-mono text-xs">
-                    <span className="text-slate-400">Previewing: </span>
-                    <strong className="text-cyan-300">
-                      Signature {signatureIndex + 1} of {totalSignatures}
-                    </strong>
-                    <span className="text-slate-500 text-[10px] block">
-                      Pages {signatureIndex * layoutPages + 1}–{Math.min((signatureIndex + 1) * layoutPages, totalBookPages)}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => setSignatureIndex(prev => Math.min(totalSignatures - 1, prev + 1))}
-                    disabled={signatureIndex >= totalSignatures - 1}
-                    className="p-1.5 rounded-lg bg-[#1A2436] hover:bg-[#233045] text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
               </div>
 
               {/* Binding Style Selection */}
@@ -1636,10 +1543,134 @@ export default function ImpositionSection({
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            CENTER COLUMN: INTERACTIVE PREPRESS SHEET PREVIEW CANVAS (6 COLS)
+           ═══════════════════════════════════════════════════════════════════ */}
+        <div className="lg:col-span-6 xl:col-span-6 min-w-0">
+          <div className="glass-panel rounded-2xl p-3 shadow-2xl flex flex-col min-h-[calc(100vh-130px)]">
+            <SheetPreview
+              partMode={partMode}
+              sheetWidth={sheetWidth}
+              sheetHeight={sheetHeight}
+              columns={columns}
+              rows={rows}
+              marginTop={marginTop}
+              marginBottom={marginBottom}
+              marginLeft={marginLeft}
+              marginRight={marginRight}
+              gutterX={gutterX}
+              gutterY={gutterY}
+              bleed={bleedTop}
+              cropMarks={cropMarks}
+              cropMarkLength={cropMarkLength}
+              cropMarkOffset={cropMarkOffset}
+              colorBars={colorBars}
+              cameraMarks={cameraMarks}
+              cameraMarkRadius={cameraMarkRadius}
+              cameraMarkSize={cameraMarkRadius * 2}
+              cameraMarkOffset={cameraMarkOffset}
+              cameraMarkPositions={cameraMarkPositions}
+              collatingMarks={collatingMarks}
+              foldMarks={foldMarks}
+              digitalBarcode={digitalBarcode}
+              printTechnology={printTechnology}
+              workStyle={workStyle}
+              impositionMode={bindingStyle}
+              selectedLayout={selectedLayout}
+              totalPages={totalBookPages}
+              sheetIndex={signatureIndex}
+              onSheetChange={(idx) => setSignatureIndex(idx)}
+              thumbnails={thumbnails}
+              thumbnailsLoading={thumbnailsLoading}
+              thumbnailsProgress={thumbnailsProgress}
+              pageRotation={pageRotation}
+              pageOrientation={pageOrientation}
+              bookWidth={parseFloat(bookWidth)}
+              bookHeight={parseFloat(bookHeight)}
+              bookPreset={bookPreset}
+              coverParams={{
+                spineWidth: calculatedSpine,
+                flapWidth,
+                hasFlaps,
+                bodyPageCount: totalBookPages,
+                coverStock: '80gsm'
+              }}
+            />
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            RIGHT COLUMN: METRICS, PRODUCTION MARKS & ACTIONS (3 COLS)
+           ═══════════════════════════════════════════════════════════════════ */}
+        <div className="lg:col-span-3 xl:col-span-3 space-y-3 max-h-[calc(100vh-130px)] overflow-y-auto pl-1">
+
+          {/* Multi-Signature Pagination & Intelligence Bar */}
+          <div className="glass-panel border border-white/10 rounded-2xl p-3.5 shadow-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">Multi-Signature Pagination</span>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                {totalSignatures} {totalSignatures === 1 ? 'Sig' : 'Sigs'}
+              </span>
+            </div>
+
+            {/* Calculation breakdown */}
+            <div className="grid grid-cols-3 gap-1.5 p-2 rounded-xl bg-slate-900/60 border border-white/5 text-center">
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-mono block">Pages</span>
+                <strong className="text-xs font-mono text-white">{totalBookPages}</strong>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-mono block">Capacity</span>
+                <strong className="text-xs font-mono text-cyan-300">{totalCapacity}</strong>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 uppercase font-mono block">Blank</span>
+                <strong className={`text-xs font-mono ${blankPaddingPages > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {blankPaddingPages}
+                </strong>
+              </div>
+            </div>
+
+            {/* Interactive Signature Switcher */}
+            <div className="flex items-center justify-between gap-2 p-1.5 rounded-xl bg-slate-950/80 border border-white/10">
+              <button
+                type="button"
+                onClick={() => setSignatureIndex(prev => Math.max(0, prev - 1))}
+                disabled={signatureIndex === 0}
+                className="p-1 rounded-lg glass-card hover:bg-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <div className="text-center font-mono text-xs">
+                <span className="text-slate-400">Sig </span>
+                <strong className="text-cyan-300">
+                  {signatureIndex + 1} / {totalSignatures}
+                </strong>
+                <span className="text-slate-500 text-[10px] block">
+                  Pages {signatureIndex * layoutPages + 1}–{Math.min((signatureIndex + 1) * layoutPages, totalBookPages)}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSignatureIndex(prev => Math.min(totalSignatures - 1, prev + 1))}
+                disabled={signatureIndex >= totalSignatures - 1}
+                className="p-1 rounded-lg glass-card hover:bg-slate-800 text-slate-300 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
 
           {/* ─── Production Marks Checkboxes ──────────────────────────────── */}
-          <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl">
-            <div className="flex items-center justify-between mb-2.5">
+          <div className="glass-panel border border-white/10 rounded-2xl p-3.5 shadow-xl space-y-2.5">
+            <div className="flex items-center justify-between">
               <span className="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">
                 Production Marks
               </span>
@@ -1649,12 +1680,12 @@ export default function ImpositionSection({
                   onClick={() => setShowCameraOptions(!showCameraOptions)}
                   className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all flex items-center gap-1 cursor-pointer ${showCameraOptions
                       ? 'bg-cyan-500 text-black font-bold border-cyan-400'
-                      : 'bg-cyan-950/80 hover:bg-cyan-900 border-cyan-700 text-cyan-300'
+                      : 'glass-card border-cyan-700/60 text-cyan-300 hover:text-white'
                     }`}
                   title="Configure Camera Marks"
                 >
                   <Settings2 className="w-3 h-3" />
-                  <span>{showCameraOptions ? 'Hide Cam Opts' : 'Camera Opts'}</span>
+                  <span>{showCameraOptions ? 'Hide Opts' : 'Fiducials'}</span>
                 </button>
               )}
             </div>
@@ -1672,50 +1703,87 @@ export default function ImpositionSection({
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={colorBars} onChange={(e) => setColorBars(e.target.checked)} className="rounded accent-cyan-400" />
-                <span className="text-amber-300 font-semibold">CMYK Color Bars</span>
+                <span className="text-amber-300 font-semibold">CMYK Bars</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={jobSlug} onChange={(e) => setJobSlug(e.target.checked)} className="rounded accent-cyan-400" />
-                <span>Job Slug Line</span>
+                <span>Job Slug</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={foldMarks} onChange={(e) => setFoldMarks(e.target.checked)} className="rounded accent-cyan-400" />
+                <span>Fold & Knife Marks</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={digitalBarcode} onChange={(e) => setDigitalBarcode(e.target.checked)} className="rounded accent-cyan-400" />
+                <span className="text-emerald-300 font-semibold">Auto-Cut Barcode</span>
               </label>
               {partMode === 'TEXT' && (
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2 cursor-pointer col-span-2">
                   <input type="checkbox" checked={collatingMarks} onChange={(e) => setCollatingMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                  <span>Collating Marks</span>
+                  <span className="text-cyan-300">Spine Collation Stairs (Kodak)</span>
                 </label>
               )}
             </div>
 
+            {/* ─── Digital Press Setup Intelligence Card ─── */}
+            {printTechnology === 'DIGITAL' && (
+              <div className="mt-2.5 p-2.5 rounded-xl bg-slate-900/70 border border-emerald-900/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase flex items-center gap-1">
+                    <Printer className="w-3 h-3 text-emerald-400" />
+                    Digital Press Calibration Guard
+                  </span>
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    SRA3 / Cut-Sheet
+                  </span>
+                </div>
+                <div className="text-[9px] font-mono space-y-1 text-slate-300">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Lead Gripper Margin (≥4.5mm):</span>
+                    <span className={`font-bold ${parseFloat(marginTop) >= 4.5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {marginTop}mm {parseFloat(marginTop) >= 4.5 ? '✓ Safe' : '⚠️ Risk'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Automated Cutter Protocol:</span>
+                    <span className="text-cyan-300 font-bold">Duplo / Horizon / Zünd</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Press Profile:</span>
+                    <span className="text-slate-200">Closed-Loop Toner (Zero Plate Wear)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ─── Expandable Camera Mark Options ─── */}
             {cameraMarks && showCameraOptions && (
-              <div className="mt-3 pt-3 border-t border-[#1E293B] space-y-3 bg-[#10141D] p-3 rounded-xl border border-cyan-900/40">
+              <div className="mt-2.5 pt-2.5 border-t border-white/10 space-y-2.5 bg-slate-900/60 p-2.5 rounded-xl border border-cyan-900/40">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-mono font-bold text-cyan-300 flex items-center gap-1.5 uppercase">
-                    <Camera className="w-3.5 h-3.5 text-cyan-400" />
-                    Optical Camera Fiducial Settings
+                  <span className="text-[10px] font-mono font-bold text-cyan-300 flex items-center gap-1.5 uppercase">
+                    <Camera className="w-3 h-3 text-cyan-400" />
+                    Optical Fiducial Settings
                   </span>
                   <span className="text-[9px] font-mono text-slate-500">
-                    Zünd • Kongsberg • i-cut
+                    Zünd • Kongsberg
                   </span>
                 </div>
 
                 {/* 5 mm radius circle filled with color with an outer border */}
-                <div className="p-2.5 rounded-lg bg-[#0B0F17] border border-cyan-800/40 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[#141C2A] flex items-center justify-center border border-[#233045] shrink-0">
-                    <svg width="32" height="32" viewBox="0 0 32 32">
-                      {/* Outer border ring */}
+                <div className="p-2 rounded-lg bg-slate-950/80 border border-cyan-800/40 flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center border border-white/10 shrink-0">
+                    <svg width="24" height="24" viewBox="0 0 32 32">
                       <circle cx="16" cy="16" r="13" fill="#FFFFFF" stroke="#000000" strokeWidth="1.2" />
-                      {/* 5 mm radius circle filled with color */}
                       <circle cx="16" cy="16" r="9" fill="#000000" stroke="#000000" strokeWidth="0.8" />
                     </svg>
                   </div>
                   <div>
-                    <div className="text-[11px] font-mono font-bold text-white flex items-center gap-1.5">
+                    <div className="text-[10px] font-mono font-bold text-white flex items-center gap-1">
                       <span>5 mm Radius Circle</span>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-700/50">Clean Fiducial</span>
+                      <span className="text-[8px] px-1 py-0.2 rounded bg-cyan-900/60 text-cyan-300">Clean Border</span>
                     </div>
-                    <div className="text-[9px] text-slate-400 mt-0.5 leading-tight">
-                      5 mm radius circle filled with solid color with an outer border ring. Precision optical fiducials for automated digital cutters.
+                    <div className="text-[8px] text-slate-400 leading-tight">
+                      Outer border ring with solid fill. Precision optical fiducials safely in waste margins.
                     </div>
                   </div>
                 </div>
@@ -1723,34 +1791,22 @@ export default function ImpositionSection({
                 {/* Mark Radius */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-slate-400">Circle Radius:</span>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="2"
-                        max="10"
-                        step="0.5"
-                        value={cameraMarkRadius}
-                        onChange={(e) => setCameraMarkRadius(Math.max(1, parseFloat(e.target.value) || 5))}
-                        className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
-                      />
-                      <span className="text-[10px] font-mono text-slate-500">mm</span>
-                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">Radius:</span>
+                    <span className="text-[10px] font-mono text-cyan-300 font-bold">{cameraMarkRadius} mm</span>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-1 flex-wrap">
                     {[
+                      { val: 3.5, label: '3.5 mm' },
                       { val: 4, label: '4 mm' },
-                      { val: 5, label: '5 mm (Std)' },
-                      { val: 6, label: '6 mm' },
-                      { val: 8, label: '8 mm' }
+                      { val: 5, label: '5 mm (Std)' }
                     ].map(sz => (
                       <button
                         key={sz.val}
                         type="button"
                         onClick={() => setCameraMarkRadius(sz.val)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${cameraMarkRadius === sz.val
+                        className={`px-2 py-0.5 rounded text-[9px] font-mono transition-all border cursor-pointer ${cameraMarkRadius === sz.val
                             ? 'bg-cyan-500 text-black font-bold border-cyan-400'
-                            : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
+                            : 'glass-card text-slate-400 hover:text-white border-white/5'
                           }`}
                       >
                         {sz.label}
@@ -1759,81 +1815,31 @@ export default function ImpositionSection({
                   </div>
                 </div>
 
-                {/* Edge Inset / Offset */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-slate-400">Edge Inset (Offset from Sheet Margin):</span>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="3"
-                        max="30"
-                        step="1"
-                        value={cameraMarkOffset}
-                        onChange={(e) => setCameraMarkOffset(Math.max(2, parseFloat(e.target.value) || 8))}
-                        className="w-14 bg-[#141C2A] border border-[#233045] focus:border-cyan-500 rounded px-1.5 py-0.5 text-xs font-mono text-white text-right"
-                      />
-                      <span className="text-[10px] font-mono text-slate-500">mm</span>
-                    </div>
-                  </div>
-                  <input
-                    type="range"
-                    min="3"
-                    max="25"
-                    step="1"
-                    value={cameraMarkOffset}
-                    onChange={(e) => setCameraMarkOffset(parseFloat(e.target.value))}
-                    className="w-full accent-cyan-400"
-                  />
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                    {[
-                      { val: 5, label: '5 mm' },
-                      { val: 8, label: '8 mm (Std)' },
-                      { val: 10, label: '10 mm' },
-                      { val: 15, label: '15 mm' }
-                    ].map(off => (
-                      <button
-                        key={off.val}
-                        type="button"
-                        onClick={() => setCameraMarkOffset(off.val)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${cameraMarkOffset === off.val
-                            ? 'bg-cyan-500 text-black font-bold border-cyan-400'
-                            : 'bg-[#141C2A] text-slate-400 hover:text-white border-[#233045]'
-                          }`}
-                      >
-                        {off.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Placement Positions */}
-                <div className="pt-2 border-t border-[#1E293B]">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-mono text-slate-400">Fiducial Distribution:</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] font-mono text-slate-400 block mb-1">Fiducial Distribution:</span>
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => setCameraMarkPositions('CORNERS_AND_EDGES')}
-                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${cameraMarkPositions === 'CORNERS_AND_EDGES'
+                      className={`p-1.5 rounded-lg text-left transition-all border cursor-pointer ${cameraMarkPositions === 'CORNERS_AND_EDGES'
                           ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
-                          : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                          : 'glass-card border-white/5 text-slate-400 hover:text-white'
                         }`}
                     >
-                      <div className="text-[11px] font-mono">4 Corners + Mid Edges</div>
-                      <div className="text-[9px] text-slate-500">8 fiducials (Large Format / Zünd)</div>
+                      <div className="text-[10px] font-mono">4 Corners + Edges</div>
+                      <div className="text-[8px] text-slate-500">8 marks</div>
                     </button>
                     <button
                       type="button"
                       onClick={() => setCameraMarkPositions('CORNERS')}
-                      className={`px-2 py-1.5 rounded-lg text-left transition-all border ${cameraMarkPositions === 'CORNERS'
+                      className={`p-1.5 rounded-lg text-left transition-all border cursor-pointer ${cameraMarkPositions === 'CORNERS'
                           ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 font-bold'
-                          : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                          : 'glass-card border-white/5 text-slate-400 hover:text-white'
                         }`}
                     >
-                      <div className="text-[11px] font-mono">4 Corners Only</div>
-                      <div className="text-[9px] text-slate-500">Perimeter registration</div>
+                      <div className="text-[10px] font-mono">Corners Only</div>
+                      <div className="text-[8px] text-slate-500">4 marks</div>
                     </button>
                   </div>
                 </div>
@@ -1841,13 +1847,29 @@ export default function ImpositionSection({
             )}
           </div>
 
+          {/* ─── Production Specs Summary ─────────────────────────────────── */}
+          <div className="glass-card rounded-2xl p-3 border border-white/10 space-y-1.5 text-xs font-mono">
+            <div className="flex items-center justify-between text-slate-400">
+              <span>Sheet Stock:</span>
+              <strong className="text-white">{sheetWidth} × {sheetHeight} mm</strong>
+            </div>
+            <div className="flex items-center justify-between text-slate-400">
+              <span>Book Trim:</span>
+              <strong className="text-cyan-300">{bookWidth} × {bookHeight} mm</strong>
+            </div>
+            <div className="flex items-center justify-between text-slate-400">
+              <span>Press Runs:</span>
+              <strong className="text-emerald-400">{totalSignatures} Sheets Duplex</strong>
+            </div>
+          </div>
+
           {/* ─── Error Display ────────────────────────────────────────────── */}
           {error && (
-            <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-xs font-mono flex items-start gap-2.5">
+            <div className="p-3 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-xs font-mono flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
               <div>
                 <strong>Imposition Error:</strong>
-                <p className="mt-1 m-0 text-red-200">{error}</p>
+                <p className="mt-0.5 m-0 text-red-200">{error}</p>
               </div>
             </div>
           )}
@@ -1856,9 +1878,9 @@ export default function ImpositionSection({
           <button
             onClick={handleRunImposition}
             disabled={imposing}
-            className={`w-full py-4 px-6 rounded-2xl font-bold font-mono text-sm tracking-wide uppercase transition-all shadow-xl flex items-center justify-center gap-2.5 ${partMode === 'COVER'
+            className={`w-full py-3.5 px-4 rounded-2xl font-bold font-mono text-xs tracking-wider uppercase transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-amber-500/20'
-                : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-cyan-500/20'
+                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-cyan-500/30 glass-glow-cyan'
               } disabled:opacity-50 disabled:pointer-events-none`}
           >
             {imposing ? (
@@ -1868,9 +1890,9 @@ export default function ImpositionSection({
               </>
             ) : (
               <>
-                <Printer className="w-5 h-5" />
+                <Printer className="w-4 h-4" />
                 <span>
-                  {partMode === 'COVER' ? 'Generate Wraparound Cover Spread' : `Impose ${totalSignatures} Book Signatures`}
+                  {partMode === 'COVER' ? 'Generate Cover Spread' : `Impose ${totalSignatures} Book Signatures`}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </>
@@ -1879,69 +1901,20 @@ export default function ImpositionSection({
 
           {/* Success banner */}
           {result && (
-            <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-200 text-xs font-mono flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-200 text-xs font-mono flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>Imposition complete! Output ready.</span>
               </div>
               <button
                 onClick={onProceedToOutput}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all"
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all text-xs cursor-pointer"
               >
-                Proceed to Output →
+                Proceed →
               </button>
             </div>
           )}
-        </div>
 
-        {/* ═══════════════════════════════════════════════════════════════════
-            RIGHT COLUMN: INTERACTIVE PREPRESS SHEET PREVIEW (7 COLS)
-           ═══════════════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-7">
-          <SheetPreview
-            partMode={partMode}
-            sheetWidth={sheetWidth}
-            sheetHeight={sheetHeight}
-            columns={columns}
-            rows={rows}
-            marginTop={marginTop}
-            marginBottom={marginBottom}
-            marginLeft={marginLeft}
-            marginRight={marginRight}
-            gutterX={gutterX}
-            gutterY={gutterY}
-            bleed={bleedTop}
-            cropMarks={cropMarks}
-            cropMarkLength={cropMarkLength}
-            cropMarkOffset={cropMarkOffset}
-            colorBars={colorBars}
-            cameraMarks={cameraMarks}
-            cameraMarkRadius={cameraMarkRadius}
-            cameraMarkSize={cameraMarkRadius * 2}
-            cameraMarkOffset={cameraMarkOffset}
-            cameraMarkPositions={cameraMarkPositions}
-            workStyle={workStyle}
-            impositionMode={bindingStyle}
-            selectedLayout={selectedLayout}
-            totalPages={totalBookPages}
-            sheetIndex={signatureIndex}
-            onSheetChange={(idx) => setSignatureIndex(idx)}
-            thumbnails={thumbnails}
-            thumbnailsLoading={thumbnailsLoading}
-            thumbnailsProgress={thumbnailsProgress}
-            pageRotation={pageRotation}
-            pageOrientation={pageOrientation}
-            bookWidth={parseFloat(bookWidth)}
-            bookHeight={parseFloat(bookHeight)}
-            bookPreset={bookPreset}
-            coverParams={{
-              spineWidth: calculatedSpine,
-              flapWidth,
-              hasFlaps,
-              bodyPageCount: totalBookPages,
-              coverStock: '80gsm'
-            }}
-          />
         </div>
       </div>
     </div>

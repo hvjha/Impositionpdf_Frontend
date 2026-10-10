@@ -30,9 +30,10 @@ export default function LoginView({ onLoginSuccess }) {
     try {
       const res = await loginUser(username, password);
       if (res.success && res.user) {
-        // Save session to localStorage
+        // Save session to localStorage and mark session active
         localStorage.setItem('prepress_auth_token', res.token);
         localStorage.setItem('prepress_auth_user', JSON.stringify(res.user));
+        sessionStorage.setItem('prepress_session_active', 'true');
         onLoginSuccess(res.user);
       } else {
         throw new Error(res.message || 'Login failed');
@@ -91,7 +92,8 @@ export default function LoginView({ onLoginSuccess }) {
         </div>
 
         {/* Main Card */}
-        <div className="bg-[#0F141F]/90 backdrop-blur-xl border border-[#243144] rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/80 relative">
+        {/* Main Glass Card */}
+        <div className="glass-panel rounded-3xl p-6 sm:p-8 relative border border-white/10 shadow-2xl">
           
           <div className="mb-6">
             <h2 className="text-base font-bold text-slate-100 m-0">
@@ -126,7 +128,7 @@ export default function LoginView({ onLoginSuccess }) {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter login ID"
                   required
-                  className="w-full pl-10 pr-4 py-2.5 bg-[#141B28] border border-[#2B3950] focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 rounded-xl text-sm text-slate-100 placeholder-slate-500 transition-all font-mono"
+                  className="w-full pl-10 pr-4 py-2.5 glass-input rounded-xl text-sm text-slate-100 placeholder-slate-500 transition-all font-mono"
                 />
               </div>
             </div>
@@ -148,7 +150,7 @@ export default function LoginView({ onLoginSuccess }) {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
                   required
-                  className="w-full pl-10 pr-10 py-2.5 bg-[#141B28] border border-[#2B3950] focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 rounded-xl text-sm text-slate-100 placeholder-slate-500 transition-all font-mono"
+                  className="w-full pl-10 pr-10 py-2.5 glass-input rounded-xl text-sm text-slate-100 placeholder-slate-500 transition-all font-mono"
                 />
                 <button
                   type="button"
@@ -165,7 +167,7 @@ export default function LoginView({ onLoginSuccess }) {
               <button
                 type="button"
                 onClick={fillDefaultCredentials}
-                className="w-full py-2 px-3 rounded-lg bg-[#141D2C] hover:bg-[#1C273C] border border-[#263750] text-[11px] text-cyan-300 flex items-center justify-center gap-2 transition-all font-medium"
+                className="w-full py-2 px-3 rounded-xl glass-card hover:border-cyan-500/50 text-[11px] text-cyan-300 flex items-center justify-center gap-2 transition-all font-medium cursor-pointer"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
                 <span>Auto-fill Operator Credentials</span>
@@ -177,7 +179,7 @@ export default function LoginView({ onLoginSuccess }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/25 transition-all disabled:opacity-50 cursor-pointer"
+              className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/30 transition-all disabled:opacity-50 cursor-pointer"
             >
               {loading ? (
                 <>

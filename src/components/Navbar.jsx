@@ -19,8 +19,8 @@ export default function Navbar({
   onLogout 
 }) {
   return (
-    <header className="sticky top-0 z-50 bg-[#0F141C]/90 backdrop-blur-md border-b border-[#242F42] px-4 sm:px-6 py-3">
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-50 glass-panel border-b border-white/10 px-4 sm:px-6 py-2.5 backdrop-blur-xl">
+      <div className="max-w-[1920px] mx-auto flex items-center justify-between gap-4">
         
         {/* Brand Logo & Title */}
         <div className="flex items-center gap-3 shrink-0">

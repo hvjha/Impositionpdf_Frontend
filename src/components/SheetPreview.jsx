@@ -122,6 +122,25 @@ function resolveSignaturePlacements({
     return result;
   }
 
+  // Digital Cut & Stack scheme (for continuous feed or high-speed digital engines)
+  if (impositionMode === 'CUT_AND_STACK') {
+    const sheetsTotal = Math.max(1, Math.ceil(totalPages / (isSimplex ? perSide : perSide * 2)));
+    return Array.from({ length: perSide }, (_, cellIdx) => {
+      let pg = null;
+      if (isSimplex) {
+        pg = 1 + (cellIdx * sheetsTotal) + signatureIndex;
+      } else {
+        const stackOffset = cellIdx * (sheetsTotal * 2);
+        const sheetOffset = signatureIndex * 2;
+        pg = (side === 'FRONT' ? 1 : 2) + stackOffset + sheetOffset;
+      }
+      return {
+        page: pg <= totalPages ? pg : null,
+        rot: 0
+      };
+    });
+  }
+
   // Default Sequential N-Up
   const pagesPerSheet = isSimplex ? perSide : perSide * 2;
   const offset = isSimplex ? 0 : (side === 'FRONT' ? 0 : perSide);
@@ -201,6 +220,77 @@ function CameraMark({ cx, cy, radius = 5, color = '#000000', borderColor = '#000
   );
 }
 
+// ─── Kodak Preps Spine Collation Step Mark ─────────────────────────────────
+function CollationMarkSVG({ x, y, width = 3, height = 8 }) {
+  return (
+    <g className="collation-spine-mark" title="Kodak Collation Spine Mark">
+      <rect
+        x={x - width / 2}
+        y={y - height / 2}
+        width={width}
+        height={height}
+        fill="#0F172A"
+        stroke="#38BDF8"
+        strokeWidth="0.3"
+      />
+      <rect
+        x={x - width / 4}
+        y={y - height / 4}
+        width={width / 2}
+        height={height / 2}
+        fill="#38BDF8"
+      />
+    </g>
+  );
+}
+
+// ─── Kodak Fold Marks (Tick marks at folding axes) ─────────────────────────
+function FoldMarksSVG({ sw, sh, pad, minX, maxX, minY, maxY }) {
+  const tickLen = 5;
+  const cx = pad + sw / 2;
+  const cy = pad + sh / 2;
+  return (
+    <g className="fold-knife-marks" stroke="#334155" strokeWidth="0.4" strokeDasharray="1.5 1">
+      {/* Top centerline fold tick */}
+      <line x1={cx} y1={pad} x2={cx} y2={pad + Math.min(tickLen, minY)} />
+      {/* Bottom centerline fold tick */}
+      <line x1={cx} y1={pad + sh} x2={cx} y2={pad + sh - Math.min(tickLen, sh - maxY)} />
+      {/* Left centerline fold tick */}
+      <line x1={pad} y1={cy} x2={pad + Math.min(tickLen, minX)} y2={cy} />
+      {/* Right centerline fold tick */}
+      <line x1={pad + sw} y1={cy} x2={pad + sw - Math.min(tickLen, sw - maxX)} y2={cy} />
+    </g>
+  );
+}
+
+// ─── Digital Cutter Finishing Barcode (Duplo / Horizon / Zünd) ─────────────
+function DigitalBarcodeSVG({ x, y, width = 45, height = 4.5, label = 'DIGI-CUT' }) {
+  const bars = [2, 1, 3, 1, 1, 2, 3, 1, 2, 1, 1, 3, 2, 1, 3, 1, 1, 2, 1, 3, 2, 1, 1, 2, 3];
+  let curX = x;
+  return (
+    <g className="digital-barcode">
+      {bars.map((w, i) => {
+        const barX = curX;
+        curX += w * 0.7;
+        return i % 2 === 0 ? (
+          <rect key={i} x={barX} y={y} width={w * 0.7} height={height} fill="#0F172A" />
+        ) : null;
+      })}
+      <text
+        x={x + width / 2}
+        y={y + height + 2.5}
+        fontSize="2.2"
+        fontFamily="monospace"
+        fill="#64748B"
+        textAnchor="middle"
+        fontWeight="bold"
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
@@ -227,6 +317,10 @@ export default function SheetPreview({
   cameraMarkOffset = 8,
   cameraMarkStyle = 'RING',
   cameraMarkPositions = 'CORNERS_AND_EDGES',
+  collatingMarks = true,
+  foldMarks = true,
+  digitalBarcode = false,
+  printTechnology = 'OFFSET',
   workStyle = 'SHEETWISE',
   impositionMode = 'PERFECT_BINDING',
   selectedLayout = 16,
@@ -1093,6 +1187,93 @@ export default function SheetPreview({
               </>
             );
           })()}
+
+          {/* Kodak Preps Spine Collation Step Mark */}
+          {collatingMarks && partMode === 'TEXT' && totalSignatures > 1 && (() => {
+            const ml = parseFloat(marginLeft) || 0;
+            const mr = parseFloat(marginRight) || 0;
+            const mt = parseFloat(marginTop) || 0;
+            const mb = parseFloat(marginBottom) || 0;
+            const spineX = pad + (ml + sw - mr) / 2;
+            const spineAvail = (sh - mt - mb);
+            if (spineAvail < 30) return null;
+            const startY = pad + mt + spineAvail * 0.15;
+            const endY = pad + mt + spineAvail * 0.85;
+            const currentSig = parseInt(sheetIndex, 10) || 0;
+            const frac = totalSignatures > 1 ? currentSig / (totalSignatures - 1) : 0.5;
+            const markY = startY + (endY - startY) * frac;
+            return (
+              <CollationMarkSVG
+                x={spineX}
+                y={markY}
+                width={3.5}
+                height={9}
+              />
+            );
+          })()}
+
+          {/* Kodak Fold & Knife Alignment Marks */}
+          {foldMarks && (
+            <FoldMarksSVG
+              sw={sw}
+              sh={sh}
+              pad={pad}
+              minX={parseFloat(marginLeft) || 0}
+              maxX={sw - (parseFloat(marginRight) || 0)}
+              minY={parseFloat(marginTop) || 0}
+              maxY={sh - (parseFloat(marginBottom) || 0)}
+            />
+          )}
+
+          {/* Automated Digital Cutter Barcode */}
+          {(digitalBarcode || printTechnology === 'DIGITAL') && (() => {
+            const mt = parseFloat(marginTop) || 0;
+            if (mt >= 7) {
+              return (
+                <DigitalBarcodeSVG
+                  x={pad + sw - (parseFloat(marginRight) || 12) - 45}
+                  y={pad + 1.8}
+                  width={42}
+                  height={3.8}
+                  label={`DIGI-CUT#SIG-${(parseInt(sheetIndex, 10) || 0) + 1}`}
+                />
+              );
+            }
+            return null;
+          })()}
+
+          {/* Digital Press Non-Printable Lead-Edge Gripper Safety Indicator */}
+          {printTechnology === 'DIGITAL' && parseFloat(marginTop) < 4.5 && (
+            <g className="digital-gripper-warning">
+              <line
+                x1={pad}
+                y1={pad + 4.5}
+                x2={pad + sw}
+                y2={pad + 4.5}
+                stroke="#F59E0B"
+                strokeWidth="0.5"
+                strokeDasharray="2 2"
+              />
+              <rect
+                x={pad + 5}
+                y={pad + 1}
+                width={50}
+                height={3.2}
+                fill="#78350F"
+                rx="0.8"
+              />
+              <text
+                x={pad + 6}
+                y={pad + 3.2}
+                fontSize="2"
+                fontFamily="monospace"
+                fill="#FDE68A"
+                fontWeight="bold"
+              >
+                ⚠️ LEAD GRIPPER MARGIN &lt; 4.5mm
+              </text>
+            </g>
+          )}
 
           {/* Prepress Sheet Slug Line */}
           <text

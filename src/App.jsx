@@ -28,8 +28,12 @@ export default function App() {
   // ─── Authentication State ───────────────────────────────────────────────
   const [user, setUser] = useState(() => {
     try {
+      const isSessionActive = sessionStorage.getItem('prepress_session_active');
       const saved = localStorage.getItem('prepress_auth_user');
-      return saved ? JSON.parse(saved) : null;
+      if (isSessionActive && saved) {
+        return JSON.parse(saved);
+      }
+      return null;
     } catch {
       return null;
     }
@@ -140,6 +144,7 @@ export default function App() {
   // Logout handler
   const handleLogout = useCallback(() => {
     if (window.confirm("Are you sure you want to sign out of Prepress Studio?")) {
+      sessionStorage.removeItem('prepress_session_active');
       localStorage.removeItem('prepress_auth_token');
       localStorage.removeItem('prepress_auth_user');
       setUser(null);
@@ -242,7 +247,7 @@ export default function App() {
       />
 
       {/* Main Dynamic Viewport with Suspense Lazy Loading */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
+      <main className="flex-1 w-full max-w-[1920px] mx-auto px-2 sm:px-4 py-3">
         <Suspense fallback={<PrepressSuspenseFallback label="Initializing prepress module..." />}>
           {currentStep === 1 && (
             <UploadSection

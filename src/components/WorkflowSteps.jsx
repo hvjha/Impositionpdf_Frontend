@@ -20,8 +20,8 @@ const STEPS = [
 
 export default function WorkflowSteps({ currentStep, setStep, maxAllowedStep }) {
   return (
-    <div className="w-full bg-[#111622] border-b border-[#212C3D] py-3 px-6 overflow-x-auto">
-      <div className="max-w-7xl mx-auto flex items-center justify-between min-w-[700px]">
+    <div className="w-full glass-panel border-b border-white/10 py-2 px-4 overflow-x-auto">
+      <div className="max-w-[1920px] mx-auto flex items-center justify-between min-w-[700px]">
         {STEPS.map((step, idx) => {
           const Icon = step.icon;
           const isActive = currentStep === step.id;

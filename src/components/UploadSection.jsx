@@ -107,10 +107,10 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
         onClick={() => fileInputRef.current?.click()}
         className={`relative cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
           dragActive
-            ? 'border-cyan-400 bg-cyan-950/30 shadow-xl shadow-cyan-500/10'
+            ? 'border-cyan-400 bg-cyan-950/40 shadow-xl shadow-cyan-500/20 glass-glow-cyan'
             : file
-            ? 'border-emerald-500/60 bg-emerald-950/20'
-            : 'border-[#29364C] hover:border-cyan-500/60 bg-[#121926]/80 hover:bg-[#162030]'
+            ? 'border-emerald-500/60 bg-emerald-950/30'
+            : 'border-white/10 hover:border-cyan-400/60 glass-panel hover:bg-slate-800/50'
         }`}
       >
         <input
@@ -186,7 +186,7 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
           <button
             type="button"
             onClick={onOpenHistory}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-xs tracking-wide bg-[#151D2A] hover:bg-[#1D2738] text-slate-300 hover:text-white border border-[#27364D] transition-all cursor-pointer"
+            className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-xs tracking-wide glass-card hover:bg-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer ml-3"
           >
             <FolderArchive className="w-4 h-4 text-cyan-400" />
             <span>Browse Previous Uploads & Impositions</span>
@@ -196,30 +196,30 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
 
       {/* Feature Highlights */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
-        <div className="p-4 rounded-xl bg-[#131B28] border border-[#222E42] text-left">
+        <div className="p-4 rounded-xl glass-card text-left">
           <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs mb-1 font-mono">
-            <HardDrive className="w-4 h-4" /> GRIDFS STORAGE
+            <HardDrive className="w-4 h-4" /> INSTANT STORAGE
           </div>
           <p className="text-xs text-slate-400 m-0">
-            Streams large PDFs directly into MongoDB GridFS without memory bottlenecks.
+            Streams large PDFs in ~10ms with background cloud synchronization.
           </p>
         </div>
 
-        <div className="p-4 rounded-xl bg-[#131B28] border border-[#222E42] text-left">
+        <div className="p-4 rounded-xl glass-card text-left">
           <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs mb-1 font-mono">
             <ShieldCheck className="w-4 h-4" /> PREFLIGHT INSPECTION
           </div>
           <p className="text-xs text-slate-400 m-0">
-            Extracts MediaBox, TrimBox, BleedBox, color spaces & embedded font schemas.
+            Extracts MediaBox, TrimBox, BleedBox, color spaces & embedded fonts.
           </p>
         </div>
 
-        <div className="p-4 rounded-xl bg-[#131B28] border border-[#222E42] text-left">
+        <div className="p-4 rounded-xl glass-card text-left">
           <div className="flex items-center gap-2 text-indigo-400 font-semibold text-xs mb-1 font-mono">
             <Zap className="w-4 h-4" /> IMPOSITION ENGINE
           </div>
           <p className="text-xs text-slate-400 m-0">
-            Auto-calculates N-up grid placement with cut marks, registration targets & color bars.
+            Auto-calculates N-up grid placement with cut marks & optical camera fiducials.
           </p>
         </div>
       </div>
