@@ -18,9 +18,9 @@ const HistoryModal = lazy(() => import('./components/HistoryModal'));
 // Premium Skeleton Fallback Loader
 function PrepressSuspenseFallback({ label = "Loading workflow module..." }) {
   return (
-    <div className="w-full py-16 flex flex-col items-center justify-center space-y-3">
-      <div className="w-10 h-10 border-2 border-cyan-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
-      <p className="text-xs font-mono text-cyan-400/80 animate-pulse">{label}</p>
+    <div className="suspense-fallback">
+      <div className="suspense-spinner" />
+      <p className="suspense-label">{label}</p>
     </div>
   );
 }
@@ -55,6 +55,9 @@ export default function App() {
   const [validationData, setValidationData] = useState(null);
   const [cropData, setCropData] = useState(null);
   const [impositionData, setImpositionData] = useState(null);
+
+  // ─── Sidebar collapse state ─────────────────────────────────────────────
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // ─── Telemetry Logs ─────────────────────────────────────────────────────
   const [logs, setLogs] = useState([
@@ -228,8 +231,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0E14] text-slate-100 flex flex-col font-sans pb-16">
-      {/* Unified Navigation Header */}
+    <div className="app-shell">
+      {/* Top Navigation Header */}
       <Navbar
         isBackendOnline={isBackendOnline}
         activeJob={activeJob}
@@ -240,87 +243,97 @@ export default function App() {
         onLogout={handleLogout}
       />
 
-      {/* Workflow Stepper Bar */}
-      <WorkflowSteps
-        currentStep={currentStep}
-        setStep={setCurrentStep}
-        maxAllowedStep={maxAllowedStep}
-      />
+      {/* 3-Column Layout Body */}
+      <div className="app-body">
+        
+        {/* LEFT SIDEBAR: Workflow Navigation */}
+        <aside className={`app-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+          <WorkflowSteps
+            currentStep={currentStep}
+            setStep={setCurrentStep}
+            maxAllowedStep={maxAllowedStep}
+            isCollapsed={sidebarCollapsed}
+          />
+        </aside>
 
-      {/* Main Dynamic Viewport with Suspense Lazy Loading */}
-      <main className="flex-1 w-full max-w-[1920px] mx-auto px-2 sm:px-4 py-3">
-        <Suspense fallback={<PrepressSuspenseFallback label="Initializing prepress module..." />}>
-          {currentStep === 1 && (
-            <UploadSection
-              onUploadSuccess={handleUploadSuccess}
-              onOpenHistory={() => setIsHistoryOpen(true)}
-            />
-          )}
+        {/* CENTER: Main Content Viewport */}
+        <main className="app-main">
+          <Suspense fallback={<PrepressSuspenseFallback label="Initializing prepress module..." />}>
+            {currentStep === 1 && (
+              <UploadSection
+                onUploadSuccess={handleUploadSuccess}
+                onOpenHistory={() => setIsHistoryOpen(true)}
+              />
+            )}
 
-          {currentStep === 2 && activeJob && (
-            <AnalysisSection
-              jobId={activeJob.jobId}
-              analysisData={analysisData}
-              onAnalysisSuccess={handleAnalysisSuccess}
-              onProceedToValidation={() => {
-                setMaxAllowedStep((prev) => (prev < 3 ? 3 : prev));
-                setCurrentStep(3);
-              }}
-            />
-          )}
+            {currentStep === 2 && activeJob && (
+              <AnalysisSection
+                jobId={activeJob.jobId}
+                analysisData={analysisData}
+                onAnalysisSuccess={handleAnalysisSuccess}
+                onProceedToValidation={() => {
+                  setMaxAllowedStep((prev) => (prev < 3 ? 3 : prev));
+                  setCurrentStep(3);
+                }}
+              />
+            )}
 
-          {currentStep === 3 && activeJob && (
-            <ValidationSection
-              jobId={activeJob.jobId}
-              validationData={validationData}
-              onValidationSuccess={handleValidationSuccess}
-              onProceedToCrop={() => {
-                setMaxAllowedStep((prev) => (prev < 4 ? 4 : prev));
-                setCurrentStep(4);
-              }}
-              onProceedToImposition={() => {
-                setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
-                setCurrentStep(5);
-              }}
-            />
-          )}
+            {currentStep === 3 && activeJob && (
+              <ValidationSection
+                jobId={activeJob.jobId}
+                validationData={validationData}
+                onValidationSuccess={handleValidationSuccess}
+                onProceedToCrop={() => {
+                  setMaxAllowedStep((prev) => (prev < 4 ? 4 : prev));
+                  setCurrentStep(4);
+                }}
+                onProceedToImposition={() => {
+                  setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+                  setCurrentStep(5);
+                }}
+              />
+            )}
 
-          {currentStep === 4 && activeJob && (
-            <CropSection
-              jobId={activeJob.jobId}
-              analysisData={analysisData}
-              onCropSuccess={handleCropSuccess}
-              onProceedToImposition={() => {
-                setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
-                setCurrentStep(5);
-              }}
-            />
-          )}
+            {currentStep === 4 && activeJob && (
+              <CropSection
+                jobId={activeJob.jobId}
+                analysisData={analysisData}
+                onCropSuccess={handleCropSuccess}
+                onProceedToImposition={() => {
+                  setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+                  setCurrentStep(5);
+                }}
+              />
+            )}
 
-          {currentStep === 5 && activeJob && (
-            <ImpositionSection
-              jobId={activeJob.jobId}
-              analysisData={analysisData}
-              uploadedFile={uploadedFile}
-              activeJob={activeJob}
-              onImpositionSuccess={handleImpositionSuccess}
-              onProceedToOutput={() => setCurrentStep(6)}
-            />
-          )}
+            {currentStep === 5 && activeJob && (
+              <ImpositionSection
+                jobId={activeJob.jobId}
+                analysisData={analysisData}
+                uploadedFile={uploadedFile}
+                activeJob={activeJob}
+                onImpositionSuccess={handleImpositionSuccess}
+                onProceedToOutput={() => setCurrentStep(6)}
+              />
+            )}
 
-          {currentStep === 6 && activeJob && (
-            <PdfCanvasViewer
-              jobId={activeJob.jobId}
-              outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
-              activeJob={activeJob}
-              onReset={handleReset}
-            />
-          )}
-        </Suspense>
-      </main>
+            {currentStep === 6 && activeJob && (
+              <PdfCanvasViewer
+                jobId={activeJob.jobId}
+                outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
+                activeJob={activeJob}
+                onReset={handleReset}
+              />
+            )}
+          </Suspense>
+        </main>
+      </div>
 
       {/* Telemetry Log Drawer */}
       <ConsoleDrawer logs={logs} />
+
+      {/* Footer */}
+      <Footer />
 
       {/* Dual Column History Modal (Lazy Loaded) */}
       {isHistoryOpen && (
@@ -334,7 +347,6 @@ export default function App() {
           />
         </Suspense>
       )}
-          <Footer />
     </div>
   );
 }
