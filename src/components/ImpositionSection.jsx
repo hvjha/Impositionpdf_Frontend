@@ -28,7 +28,11 @@ import {
   SlidersHorizontal,
   Camera,
   Link2,
-  Unlink
+  Unlink,
+  Package,
+  Box,
+  Zap,
+  Ruler
 } from 'lucide-react';
 import { imposePdfJob, getSourcePdfUrl, getOutputPdfUrl } from '../services/api';
 import usePdfThumbnails from '../hooks/usePdfThumbnails';
@@ -123,8 +127,8 @@ export default function ImpositionSection({
     progress: thumbnailsProgress
   } = usePdfThumbnails(pdfSource, Math.min(64, parseInt(analysisData?.pageCount || 16, 10)));
 
-  // ─── High-Level Prepress Part: Book Text vs Book Cover ──────────────────
-  const [partMode, setPartMode] = useState('TEXT'); // 'TEXT' | 'COVER'
+  // ─── High-Level Prepress Part: Book Text vs Book Cover vs Box Studio ──
+  const [partMode, setPartMode] = useState('TEXT'); // 'TEXT' | 'COVER' | 'BOX'
 
   // ─── Book Text (Signature) Settings ─────────────────────────────────────
   const [selectedLayout, setSelectedLayout] = useState(16); // 16PP Preps standard
@@ -142,6 +146,22 @@ export default function ImpositionSection({
   const [hingeAllowance, setHingeAllowance] = useState(0.5); // mm
   const [hasFlaps, setHasFlaps] = useState(false);
   const [flapWidth, setFlapWidth] = useState(60); // mm
+
+  // ─── Box & Packaging Studio Settings ─────────────────────────────────────
+  const [boxStyle, setBoxStyle] = useState('RTE'); // 'RTE' | 'STE' | 'LOCK_BOTTOM' | 'SLEEVE' | 'CUSTOM'
+  const [boxLength, setBoxLength] = useState(100); // mm (L)
+  const [boxWidth, setBoxWidth] = useState(60);   // mm (W)
+  const [boxHeight, setBoxHeight] = useState(140);  // mm (H / Depth)
+  const [glueTabWidth, setGlueTabWidth] = useState(15); // mm
+  const [tuckFlapHeight, setTuckFlapHeight] = useState(15); // mm
+  const [boxCols, setBoxCols] = useState(2);
+  const [boxRows, setBoxRows] = useState(3);
+  const [interlockMode, setInterlockMode] = useState('INTERLOCKING'); // 'INTERLOCKING' | 'STANDARD' | 'HEAD_TO_HEAD'
+  const [dielineOverlay, setDielineOverlay] = useState(true);
+  const [removeWhiteSpace, setRemoveWhiteSpace] = useState(true); // Auto-crop white space around box
+  const [interlockShiftX, setInterlockShiftX] = useState(0); // mm
+  const [interlockShiftY, setInterlockShiftY] = useState(0); // mm
+  const [orderQuantity, setOrderQuantity] = useState(1000);
 
   // ─── Sheet Dimensions (Raw Stock Paper) ─────────────────────────────────
   const [sheetPreset, setSheetPreset] = useState('23×36"');
@@ -294,6 +314,52 @@ export default function ImpositionSection({
     const spine = (bookLeaves * parseFloat(paperCaliper)) + parseFloat(hingeAllowance || 0.5);
     return Math.max(1, Math.round(spine * 10) / 10);
   }, [bookLeaves, paperCaliper, hingeAllowance]);
+
+  // Box Dieline Flat Dimensions Calculation
+  const boxFlatDimensions = useMemo(() => {
+    const L = parseFloat(boxLength) || 100;
+    const W = parseFloat(boxWidth) || 60;
+    const H = parseFloat(boxHeight) || 140;
+    const glue = parseFloat(glueTabWidth) || 15;
+    const tuck = parseFloat(tuckFlapHeight) || 15;
+
+    let flatW = 0;
+    let flatH = 0;
+
+    if (boxStyle === 'RTE' || boxStyle === 'STE') {
+      flatW = 2 * L + 2 * W + glue;
+      flatH = H + 2 * tuck + 6;
+    } else if (boxStyle === 'LOCK_BOTTOM') {
+      flatW = 2 * L + 2 * W + glue;
+      flatH = H + 0.5 * W + tuck + 10;
+    } else {
+      flatW = sourcePdfPageWidthMM || (L + W);
+      flatH = sourcePdfPageHeightMM || H;
+    }
+
+    return {
+      flatW: Math.round(flatW * 10) / 10,
+      flatH: Math.round(flatH * 10) / 10
+    };
+  }, [boxStyle, boxLength, boxWidth, boxHeight, glueTabWidth, tuckFlapHeight, sourcePdfPageWidthMM, sourcePdfPageHeightMM]);
+
+  // Box Packaging Press Sheet Metrics
+  const boxMetrics = useMemo(() => {
+    const c = Math.max(1, parseInt(boxCols, 10) || 1);
+    const r = Math.max(1, parseInt(boxRows, 10) || 1);
+    const boxesPerSheet = c * r;
+
+    const sw = parseFloat(sheetWidth) || 584;
+    const sh = parseFloat(sheetHeight) || 914;
+    const sheetArea = sw * sh;
+
+    const netBoxArea = boxesPerSheet * (boxFlatDimensions.flatW * boxFlatDimensions.flatH);
+    const efficiencyPct = Math.min(100, Math.round((netBoxArea / sheetArea) * 1000) / 10);
+    const wastePct = Math.round((100 - efficiencyPct) * 10) / 10;
+    const sheetsNeeded = Math.ceil((parseInt(orderQuantity, 10) || 1000) / boxesPerSheet);
+
+    return { boxesPerSheet, sheetArea, netBoxArea, efficiencyPct, wastePct, sheetsNeeded };
+  }, [boxCols, boxRows, sheetWidth, sheetHeight, boxFlatDimensions, orderQuantity]);
 
   // Prepress Fit Intelligence: Compare Sheet Printable Area vs Book Grid
   const fitMetrics = useMemo(() => {
@@ -481,7 +547,9 @@ export default function ImpositionSection({
     setImposing(true);
     setError(null);
 
+    const isBoxMode = partMode === 'BOX';
     const config = {
+      productCategory: isBoxMode ? 'BOX' : 'BOOK',
       sheet: {
         width: parseFloat(sheetWidth),
         height: parseFloat(sheetHeight),
@@ -491,22 +559,41 @@ export default function ImpositionSection({
         isCustom: sheetPreset === 'CUSTOM'
       },
       bookSize: {
-        width: parseFloat(bookWidth),
-        height: parseFloat(bookHeight),
+        width: isBoxMode ? boxFlatDimensions.flatW : parseFloat(bookWidth),
+        height: isBoxMode ? boxFlatDimensions.flatH : parseFloat(bookHeight),
         unit: 'mm',
         preset: bookPreset,
         isCustom: bookPreset === 'CUSTOM'
       },
       layout: {
-        pagesPerLayout: partMode === 'COVER' ? 4 : selectedLayout,
-        mode: partMode === 'COVER' ? 'COVER' : 'TEXT',
+        pagesPerLayout: isBoxMode ? boxMetrics.boxesPerSheet : (partMode === 'COVER' ? 4 : selectedLayout),
+        mode: partMode,
+        columns: isBoxMode ? boxCols : columns,
+        rows: isBoxMode ? boxRows : rows,
+        interlockMode: isBoxMode ? interlockMode : 'STANDARD',
         orientation: pageOrientation,
         pageOrientation,
         pageRotation: parseInt(pageRotation, 10) || 0
       },
-      workStyle,
+      boxConfig: isBoxMode ? {
+        boxStyle,
+        length: parseFloat(boxLength) || 100,
+        width: parseFloat(boxWidth) || 60,
+        height: parseFloat(boxHeight) || 140,
+        glueTab: parseFloat(glueTabWidth) || 15,
+        tuckFlap: parseFloat(tuckFlapHeight) || 15,
+        flatWidth: boxFlatDimensions.flatW,
+        flatHeight: boxFlatDimensions.flatH,
+        interlockMode,
+        dielineOverlay,
+        removeWhiteSpace,
+        interlockShiftX,
+        interlockShiftY,
+        orderQuantity: parseInt(orderQuantity, 10) || 1000
+      } : undefined,
+      workStyle: isBoxMode ? 'SINGLE_SIDED' : workStyle,
       binding: {
-        type: bindingStyle,
+        type: isBoxMode ? 'FLAT' : bindingStyle,
         creep: bindingStyle === 'SADDLE_STITCH' ? parseFloat(creepMM) : 0
       },
       margins: {
@@ -598,12 +685,12 @@ export default function ImpositionSection({
           </span>
         </div>
 
-        {/* Center: Part Mode Switcher (Body Text vs Cover) */}
-        <div className="inline-flex p-1 rounded-xl glass-card border border-white/10 shadow-inner">
+        {/* Center: Part Mode Switcher (Book Text vs Cover vs Box Studio) */}
+        <div className="inline-flex p-1 rounded-xl glass-card border border-white/10 shadow-inner gap-1">
           <button
             type="button"
             onClick={() => { setPartMode('TEXT'); setSignatureIndex(0); }}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'TEXT'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'TEXT'
                 ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20'
                 : 'text-slate-400 hover:text-slate-200'
               }`}
@@ -614,13 +701,24 @@ export default function ImpositionSection({
           <button
             type="button"
             onClick={() => { setPartMode('COVER'); setSignatureIndex(0); }}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'COVER'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-500/20'
                 : 'text-slate-400 hover:text-slate-200'
               }`}
           >
             <Bookmark className="w-3.5 h-3.5" />
-            <span>Cover Studio (Spread)</span>
+            <span>Cover Studio</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setPartMode('BOX'); setSignatureIndex(0); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'BOX'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-slate-200'
+              }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Box & Packaging Studio</span>
           </button>
         </div>
 
@@ -853,6 +951,221 @@ export default function ImpositionSection({
                     />
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── MODE 3: BOX & PACKAGING STUDIO CONTROLS ─────────────────── */}
+          {partMode === 'BOX' && (
+            <div className="bg-[#141C2A] border border-emerald-900/40 rounded-2xl p-4 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">Box Packaging Studio</span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
+                  N-Up Packaging
+                </span>
+              </div>
+
+              {/* Box Style Presets */}
+              <div>
+                <label className="text-[11px] font-mono text-slate-300 font-bold block mb-1.5">Box Design Style</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'RTE', label: 'Reverse Tuck (RTE)', desc: 'Retail Folding Carton' },
+                    { id: 'STE', label: 'Straight Tuck (STE)', desc: 'Front Tuck Carton' },
+                    { id: 'LOCK_BOTTOM', label: 'Crash Lock', desc: 'Auto Lock Heavy Duty' },
+                    { id: 'SLEEVE', label: 'Packaging Sleeve', desc: 'Slide-over Sleeve' },
+                  ].map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() => setBoxStyle(style.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${boxStyle === style.id
+                          ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-md shadow-emerald-500/10'
+                          : 'bg-[#10141D] border-[#233045] text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                      <div className="text-xs font-bold font-mono">{style.label}</div>
+                      <div className="text-[9px] text-slate-400 truncate">{style.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3D Box Dimensions (L x W x H) */}
+              <div className="p-3 rounded-xl bg-[#10141D] border border-[#233045] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-slate-200 font-bold flex items-center gap-1.5">
+                    <Ruler className="w-3.5 h-3.5 text-emerald-400" />
+                    Finished 3D Box Dimensions (mm)
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[9px] font-mono text-slate-400 block mb-0.5">Length (L):</span>
+                    <input
+                      type="number"
+                      value={boxLength}
+                      onChange={(e) => setBoxLength(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-mono text-slate-400 block mb-0.5">Width (W):</span>
+                    <input
+                      type="number"
+                      value={boxWidth}
+                      onChange={(e) => setBoxWidth(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-mono text-slate-400 block mb-0.5">Height/Depth:</span>
+                    <input
+                      type="number"
+                      value={boxHeight}
+                      onChange={(e) => setBoxHeight(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Calculated Flat Dieline Footprint */}
+                <div className="pt-2 border-t border-[#1E293B] flex items-center justify-between">
+                  <span className="text-[11px] font-mono text-slate-400">Calculated Flat Dieline:</span>
+                  <span className="text-xs font-mono text-emerald-300 font-bold">
+                    {boxFlatDimensions.flatW} × {boxFlatDimensions.flatH} mm
+                  </span>
+                </div>
+              </div>
+
+              {/* N-Up Grid & Interlocking Dutch Layout */}
+              <div className="p-3 rounded-xl bg-[#10141D] border border-[#233045] space-y-2.5">
+                <span className="text-xs font-mono text-slate-200 font-bold block">
+                  Box N-Up Grid & Laying Pattern
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] font-mono text-slate-400 block mb-0.5">Columns (C):</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={boxCols}
+                      onChange={(e) => setBoxCols(parseInt(e.target.value, 10) || 1)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-mono text-slate-400 block mb-0.5">Rows (R):</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={boxRows}
+                      onChange={(e) => setBoxRows(parseInt(e.target.value, 10) || 1)}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Interlocking / Dutch Rotation Mode */}
+                <div>
+                  <label className="text-[10px] font-mono text-slate-400 block mb-1">Interlocking Row Nesting (Paper Saving)</label>
+                  <select
+                    value={interlockMode}
+                    onChange={(e) => setInterlockMode(e.target.value)}
+                    className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                  >
+                    <option value="INTERLOCKING">INTERLOCKING / DUTCH (Alternate row 180°)</option>
+                    <option value="STANDARD">UNIFORM (All 0°)</option>
+                    <option value="HEAD_TO_HEAD">HEAD TO HEAD (Top to Top 180°)</option>
+                  </select>
+                </div>
+
+                {/* Auto-Crop White Space & Dieline Keylines Checkboxes */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-[#141C2A] border border-[#233045]">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="removeWhiteSpace"
+                        checked={removeWhiteSpace}
+                        onChange={(e) => setRemoveWhiteSpace(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <label htmlFor="removeWhiteSpace" className="text-xs font-mono text-slate-200 cursor-pointer">
+                        Remove White Space (Auto-Crop Bounding Box)
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-[#141C2A] border border-[#233045]">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="dielineOverlay"
+                        checked={dielineOverlay}
+                        onChange={(e) => setDielineOverlay(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
+                      />
+                      <label htmlFor="dielineOverlay" className="text-xs font-mono text-slate-200 cursor-pointer">
+                        Draw Structural Keylines (Red Cut / Blue Crease)
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flap Nesting Shift X & Y (for Interlocking Alignment) */}
+                {interlockMode !== 'STANDARD' && (
+                  <div className="p-2.5 rounded-lg bg-[#10141D] border border-[#233045] space-y-2">
+                    <label className="text-[10px] font-mono text-cyan-400 block uppercase font-semibold">
+                      Interlocking Flap Nesting Shift
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Shift Y (Vertical Nesting mm)</label>
+                        <input
+                          type="number"
+                          step="1"
+                          value={interlockShiftY}
+                          onChange={(e) => setInterlockShiftY(parseFloat(e.target.value) || 0)}
+                          className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                          placeholder="0 mm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-mono text-slate-400 block mb-0.5">Shift X (Horizontal Alignment mm)</label>
+                        <input
+                          type="number"
+                          step="1"
+                          value={interlockShiftX}
+                          onChange={(e) => setInterlockShiftX(parseFloat(e.target.value) || 0)}
+                          className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                          placeholder="0 mm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Box Efficiency & Required Sheets Card */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-teal-950/40 border border-emerald-500/40 space-y-2">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-slate-300">Total Boxes per Sheet:</span>
+                  <strong className="text-emerald-300 font-bold">{boxMetrics.boxesPerSheet}-Up Layout</strong>
+                </div>
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-slate-300">Sheet Area Efficiency:</span>
+                  <strong className="text-emerald-400 font-bold">{boxMetrics.efficiencyPct}%</strong>
+                </div>
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-slate-300">Paper Trim Waste:</span>
+                  <strong className="text-amber-400 font-bold">{boxMetrics.wastePct}%</strong>
+                </div>
               </div>
             </div>
           )}
@@ -1554,8 +1867,8 @@ export default function ImpositionSection({
               partMode={partMode}
               sheetWidth={sheetWidth}
               sheetHeight={sheetHeight}
-              columns={columns}
-              rows={rows}
+              columns={partMode === 'BOX' ? boxCols : columns}
+              rows={partMode === 'BOX' ? boxRows : rows}
               marginTop={marginTop}
               marginBottom={marginBottom}
               marginLeft={marginLeft}
@@ -1596,6 +1909,21 @@ export default function ImpositionSection({
                 hasFlaps,
                 bodyPageCount: totalBookPages,
                 coverStock: '80gsm'
+              }}
+              boxParams={{
+                boxStyle,
+                length: parseFloat(boxLength) || 100,
+                width: parseFloat(boxWidth) || 60,
+                height: parseFloat(boxHeight) || 140,
+                glueTab: parseFloat(glueTabWidth) || 15,
+                tuckFlap: parseFloat(tuckFlapHeight) || 15,
+                flatWidth: boxFlatDimensions.flatW,
+                flatHeight: boxFlatDimensions.flatH,
+                interlockMode,
+                dielineOverlay,
+                removeWhiteSpace,
+                interlockShiftX,
+                interlockShiftY
               }}
             />
           </div>
@@ -1854,13 +2182,23 @@ export default function ImpositionSection({
               <strong className="text-white">{sheetWidth} × {sheetHeight} mm</strong>
             </div>
             <div className="flex items-center justify-between text-slate-400">
-              <span>Book Trim:</span>
-              <strong className="text-cyan-300">{bookWidth} × {bookHeight} mm</strong>
+              <span>{partMode === 'BOX' ? 'Flat Box Dieline:' : 'Book Trim:'}</span>
+              <strong className={partMode === 'BOX' ? 'text-emerald-300' : 'text-cyan-300'}>
+                {partMode === 'BOX' ? `${boxFlatDimensions.flatW} × ${boxFlatDimensions.flatH} mm` : `${bookWidth} × ${bookHeight} mm`}
+              </strong>
             </div>
             <div className="flex items-center justify-between text-slate-400">
-              <span>Press Runs:</span>
-              <strong className="text-emerald-400">{totalSignatures} Sheets Duplex</strong>
+              <span>{partMode === 'BOX' ? 'Sheet N-Up Grid:' : 'Press Runs:'}</span>
+              <strong className={partMode === 'BOX' ? 'text-emerald-400' : 'text-emerald-400'}>
+                {partMode === 'BOX' ? `${boxMetrics.boxesPerSheet}-Up (${boxCols}×${boxRows})` : `${totalSignatures} Sheets Duplex`}
+              </strong>
             </div>
+            {partMode === 'BOX' && (
+              <div className="flex items-center justify-between text-slate-400 pt-1 border-t border-white/5">
+                <span>Sheet Efficiency:</span>
+                <strong className="text-emerald-400">{boxMetrics.efficiencyPct}%</strong>
+              </div>
+            )}
           </div>
 
           {/* ─── Error Display ────────────────────────────────────────────── */}
@@ -1880,7 +2218,9 @@ export default function ImpositionSection({
             disabled={imposing}
             className={`w-full py-3.5 px-4 rounded-2xl font-bold font-mono text-xs tracking-wider uppercase transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-amber-500/20'
-                : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-cyan-500/30 glass-glow-cyan'
+                : partMode === 'BOX'
+                  ? 'bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/30'
+                  : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-cyan-500/30 glass-glow-cyan'
               } disabled:opacity-50 disabled:pointer-events-none`}
           >
             {imposing ? (
@@ -1892,7 +2232,11 @@ export default function ImpositionSection({
               <>
                 <Printer className="w-4 h-4" />
                 <span>
-                  {partMode === 'COVER' ? 'Generate Cover Spread' : `Impose ${totalSignatures} Book Signatures`}
+                  {partMode === 'COVER'
+                    ? 'Generate Cover Spread'
+                    : partMode === 'BOX'
+                      ? `Impose ${boxMetrics.boxesPerSheet}-Up Box Sheet`
+                      : `Impose ${totalSignatures} Book Signatures`}
                 </span>
                 <ArrowRight className="w-4 h-4" />
               </>

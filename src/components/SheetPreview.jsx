@@ -291,11 +291,125 @@ function DigitalBarcodeSVG({ x, y, width = 45, height = 4.5, label = 'DIGI-CUT' 
   );
 }
 
+// ─── Packaging Box Dieline Vector Overlay SVG ──────────────────────────────
+function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineOverlay = true, cellIndex = 1 }) {
+  if (!dielineOverlay) return null;
+
+  const padX = w * 0.08;
+  const padY = h * 0.08;
+  const innerW = w - padX * 2;
+  const innerH = h - padY * 2;
+
+  const glueW = innerW * 0.08;
+  const panelW = (innerW - glueW) / 4;
+  const tuckH = innerH * 0.12;
+  const mainH = innerH - tuckH * 2;
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  return (
+    <g transform={`rotate(${rot} ${cx} ${cy})`} className="box-dieline-group">
+      {/* 3mm Bleed Boundary (Green) */}
+      <rect
+        x={x + 1}
+        y={y + 1}
+        width={w - 2}
+        height={h - 2}
+        fill="none"
+        stroke="#10B981"
+        strokeWidth="0.3"
+        strokeDasharray="2 1"
+      />
+
+      {/* Main Die-Cut Outer Line (Red) */}
+      <rect
+        x={x + padX}
+        y={y + padY}
+        width={innerW}
+        height={innerH}
+        fill="rgba(239, 68, 68, 0.03)"
+        stroke="#EF4444"
+        strokeWidth="0.5"
+      />
+
+      {/* Internal Crease / Fold Score Lines (Blue Dashed) */}
+      {[1, 2, 3].map((i) => (
+        <line
+          key={i}
+          x1={x + padX + glueW + i * panelW}
+          y1={y + padY + tuckH}
+          x2={x + padX + glueW + i * panelW}
+          y2={y + padY + tuckH + mainH}
+          stroke="#3B82F6"
+          strokeWidth="0.4"
+          strokeDasharray="1.5 1.5"
+        />
+      ))}
+
+      {/* Glue Tab Fold Line */}
+      <line
+        x1={x + padX + glueW}
+        y1={y + padY}
+        x2={x + padX + glueW}
+        y2={y + padY + innerH}
+        stroke="#3B82F6"
+        strokeWidth="0.4"
+        strokeDasharray="1.5 1.5"
+      />
+
+      {/* Top & Bottom Tuck Flap Creases */}
+      <line
+        x1={x + padX + glueW}
+        y1={y + padY + tuckH}
+        x2={x + padX + innerW}
+        y2={y + padY + tuckH}
+        stroke="#3B82F6"
+        strokeWidth="0.4"
+        strokeDasharray="1.5 1.5"
+      />
+      <line
+        x1={x + padX + glueW}
+        y1={y + padY + tuckH + mainH}
+        x2={x + padX + innerW}
+        y2={y + padY + tuckH + mainH}
+        stroke="#3B82F6"
+        strokeWidth="0.4"
+        strokeDasharray="1.5 1.5"
+      />
+
+      {/* Box Panel Badge */}
+      <rect
+        x={cx - 18}
+        y={cy - 5}
+        width="36"
+        height="10"
+        rx="2"
+        fill="rgba(15, 23, 42, 0.85)"
+        stroke="#EF4444"
+        strokeWidth="0.3"
+      />
+      <text
+        x={cx}
+        y={cy + 1}
+        fill="#FCA5A5"
+        fontSize="2.4"
+        fontFamily="monospace"
+        fontWeight="bold"
+        textAnchor="middle"
+        dominantBaseline="middle"
+      >
+        BOX #{cellIndex} ({rot}° {rot === 180 ? 'INTERLOCK' : ''})
+      </text>
+    </g>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 export default function SheetPreview({
-  partMode = 'TEXT', // 'TEXT' | 'COVER'
+  partMode = 'TEXT', // 'TEXT' | 'COVER' | 'BOX'
   sheetWidth = 320,
   sheetHeight = 450,
   columns = 2,
@@ -342,6 +456,19 @@ export default function SheetPreview({
     hasFlaps: false,
     bodyPageCount: 100,
     coverStock: '80gsm'
+  },
+  // Box studio parameters
+  boxParams = {
+    boxStyle: 'RTE',
+    length: 100,
+    width: 60,
+    height: 140,
+    glueTab: 15,
+    tuckFlap: 15,
+    flatWidth: 335,
+    flatHeight: 176,
+    interlockMode: 'INTERLOCKING',
+    dielineOverlay: true
   }
 }) {
   const [activeSide, setActiveSide] = useState('FRONT');
@@ -405,16 +532,13 @@ export default function SheetPreview({
     const printableW = sw - ml - mr;
     const printableH = sh - mt - mb;
 
-    // A book cover has 2 main panels: Back Cover and Front Cover, plus Spine in center
-    // If flaps are enabled, add left flap and right flap
     const panelsTotalWidth = (flapW * 2) + spineW;
-    const bookWidth = (printableW - panelsTotalWidth) / 2;
-    const bookHeight = printableH;
+    const bookW = (printableW - panelsTotalWidth) / 2;
+    const bookH = printableH;
 
     let currentX = ml;
     const panels = [];
 
-    // Left flap
     if (coverParams?.hasFlaps && flapW > 0) {
       panels.push({
         type: 'LEFT_FLAP',
@@ -422,25 +546,23 @@ export default function SheetPreview({
         x: currentX,
         y: mt,
         w: flapW,
-        h: bookHeight
+        h: bookH
       });
       currentX += flapW;
     }
 
-    // Back cover (on outside front spread) or Inside Front (on inside spread)
     panels.push({
       type: 'BACK_COVER',
       label: activeSide === 'FRONT' ? 'Back Cover (P.4)' : 'Inside Front (P.2)',
       pageNumber: activeSide === 'FRONT' ? 4 : 2,
       x: currentX,
       y: mt,
-      w: bookWidth,
-      h: bookHeight,
+      w: bookW,
+      h: bookH,
       hasBarcodeZone: activeSide === 'FRONT'
     });
-    currentX += bookWidth;
+    currentX += bookW;
 
-    // Spine
     const spineX = currentX;
     panels.push({
       type: 'SPINE',
@@ -448,24 +570,22 @@ export default function SheetPreview({
       x: currentX,
       y: mt,
       w: spineW,
-      h: bookHeight,
+      h: bookH,
       isSpine: true
     });
     currentX += spineW;
 
-    // Front cover (on outside front spread) or Inside Back (on inside spread)
     panels.push({
       type: 'FRONT_COVER',
       label: activeSide === 'FRONT' ? 'Front Cover (P.1)' : 'Inside Back (P.3)',
       pageNumber: activeSide === 'FRONT' ? 1 : 3,
       x: currentX,
       y: mt,
-      w: bookWidth,
-      h: bookHeight
+      w: bookW,
+      h: bookH
     });
-    currentX += bookWidth;
+    currentX += bookW;
 
-    // Right flap
     if (coverParams?.hasFlaps && flapW > 0) {
       panels.push({
         type: 'RIGHT_FLAP',
@@ -473,15 +593,77 @@ export default function SheetPreview({
         x: currentX,
         y: mt,
         w: flapW,
-        h: bookHeight
+        h: bookH
       });
     }
 
     return {
       sw, sh, mt, mb, ml, mr, bl, printableW, printableH,
-      spineW, spineX, bookWidth, bookHeight, panels
+      spineW, spineX, bookWidth: bookW, bookHeight: bookH, panels
     };
   }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, bleed, coverParams, activeSide]);
+
+  // ─── Box / Packaging Layout Geometry ──────────────────────────────────
+  const boxLayout = useMemo(() => {
+    const sw = parseFloat(sheetWidth) || 584;
+    const sh = parseFloat(sheetHeight) || 914;
+    const mt = parseFloat(marginTop) || 10;
+    const mb = parseFloat(marginBottom) || 10;
+    const ml = parseFloat(marginLeft) || 10;
+    const mr = parseFloat(marginRight) || 10;
+    const gx = parseFloat(gutterX) || 4;
+    const gy = parseFloat(gutterY) || 4;
+    const bl = parseFloat(bleed) || 3;
+    const c = Math.max(1, parseInt(columns) || 2);
+    const r = Math.max(1, parseInt(rows) || 3);
+
+    const printableW = sw - ml - mr;
+    const printableH = sh - mt - mb;
+    const cellW = (printableW - gx * (c - 1)) / c;
+    const cellH = (printableH - gy * (r - 1)) / r;
+
+    const cells = [];
+    const interlockMode = boxParams?.interlockMode || 'INTERLOCKING';
+
+    for (let row = 0; row < r; row++) {
+      for (let col = 0; col < c; col++) {
+        let rot = 0;
+        if (interlockMode === 'INTERLOCKING' || interlockMode === 'DUTCH') {
+          rot = (row % 2 === 1) ? 180 : 0;
+        } else if (interlockMode === 'HEAD_TO_HEAD') {
+          rot = (row % 2 === 0) ? 180 : 0;
+        }
+
+        let shiftX = 0;
+        let shiftY = 0;
+        if (rot === 180) {
+          shiftX = parseFloat(boxParams?.interlockShiftX || 0);
+          shiftY = parseFloat(boxParams?.interlockShiftY || 0);
+        }
+
+        cells.push({
+          row,
+          col,
+          x: ml + col * (cellW + gx) + shiftX,
+          y: mt + row * (cellH + gy) + shiftY,
+          w: cellW,
+          h: cellH,
+          rot,
+          idx: row * c + col,
+          page: activeSide === 'FRONT' ? 1 : (parseInt(totalPages, 10) >= 2 ? 2 : 1)
+        });
+      }
+    }
+
+    const flatW = parseFloat(boxParams?.flatWidth) || cellW;
+    const flatH = parseFloat(boxParams?.flatHeight) || cellH;
+    const boxArea = (c * r) * (flatW * flatH);
+    const sheetArea = sw * sh;
+    const efficiencyPct = Math.min(100, Math.round((boxArea / sheetArea) * 1000) / 10);
+    const wastePct = Math.round((100 - efficiencyPct) * 10) / 10;
+
+    return { sw, sh, mt, mb, ml, mr, gx, gy, bl, c, r, cellW, cellH, cells, printableW, printableH, efficiencyPct, wastePct };
+  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages]);
 
   // ─── Total Signatures / Forms ───────────────────────────────────────────
   const layoutPagesCount = parseInt(selectedLayout, 10) || 16;
@@ -504,8 +686,8 @@ export default function SheetPreview({
 
   // SVG viewBox
   const pad = 20;
-  const sw = partMode === 'COVER' ? coverLayout.sw : textLayout.sw;
-  const sh = partMode === 'COVER' ? coverLayout.sh : textLayout.sh;
+  const sw = partMode === 'COVER' ? coverLayout.sw : (partMode === 'BOX' ? boxLayout.sw : textLayout.sw);
+  const sh = partMode === 'COVER' ? coverLayout.sh : (partMode === 'BOX' ? boxLayout.sh : textLayout.sh);
   const vbW = sw + pad * 2;
   const vbH = sh + pad * 2;
 
@@ -870,6 +1052,73 @@ export default function SheetPreview({
                   cellH={coverLayout.printableH}
                 />
               )}
+            </g>
+          )}
+
+          {/* ═════════════════════════════════════════════════════════════════
+              BOX & PACKAGING STUDIO RENDERING (N-UP STEP-AND-REPEAT)
+             ═════════════════════════════════════════════════════════════════ */}
+          {partMode === 'BOX' && (
+            <g>
+              {boxLayout.cells.map((cell) => {
+                const pageNum = cell.page;
+                const thumbUrl = (pageNum && thumbnails && thumbnails[pageNum - 1]) || null;
+                const hasArtwork = Boolean(thumbUrl && showArtwork);
+                const cx = pad + cell.x + cell.w / 2;
+                const cy = pad + cell.y + cell.h / 2;
+
+                return (
+                  <g key={`box-cell-${cell.idx}`}>
+                    {/* Cell slot rectangle */}
+                    <rect
+                      x={pad + cell.x}
+                      y={pad + cell.y}
+                      width={cell.w}
+                      height={cell.h}
+                      fill={hasArtwork ? '#FFFFFF' : '#F8FAFC'}
+                      stroke="#94A3B8"
+                      strokeWidth="0.3"
+                    />
+
+                    {/* PDF Artwork Image (Rotated for Interlocking) */}
+                    {hasArtwork && (
+                      <image
+                        href={thumbUrl}
+                        x={pad + cell.x}
+                        y={pad + cell.y}
+                        width={cell.w}
+                        height={cell.h}
+                        preserveAspectRatio="xMidYMid meet"
+                        transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
+                      />
+                    )}
+
+                    {/* Vector Dieline Overlay */}
+                    <BoxCellDielineOverlay
+                      x={pad + cell.x}
+                      y={pad + cell.y}
+                      w={cell.w}
+                      h={cell.h}
+                      rot={cell.rot}
+                      boxStyle={boxParams?.boxStyle || 'RTE'}
+                      dielineOverlay={boxParams?.dielineOverlay !== false}
+                      cellIndex={cell.idx + 1}
+                    />
+
+                    {/* Crop marks at cell corners */}
+                    {cropMarks && (
+                      <CropMarksSVG
+                        x={pad + cell.x}
+                        y={pad + cell.y}
+                        length={parseFloat(cropMarkLength) || 5}
+                        offset={parseFloat(cropMarkOffset) || 2}
+                        cellW={cell.w}
+                        cellH={cell.h}
+                      />
+                    )}
+                  </g>
+                );
+              })}
             </g>
           )}
 
