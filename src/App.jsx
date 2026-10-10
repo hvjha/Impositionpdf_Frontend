@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import WorkflowSteps from './components/WorkflowSteps';
 import UploadSection from './components/UploadSection';
 import ConsoleDrawer from './components/ConsoleDrawer';
@@ -333,6 +334,7 @@ export default function App() {
           />
         </Suspense>
       )}
+          <Footer />
     </div>
   );
 }
