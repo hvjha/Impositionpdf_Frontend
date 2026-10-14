@@ -157,6 +157,18 @@ export async function imposePdfJob(jobId, config) {
 }
 
 /**
+ * Detect Artwork Non-White Margin Bounds
+ */
+export async function detectArtworkMargins(jobId) {
+  const response = await fetch(`${API_BASE_URL}/pdfs/${jobId}/detect-margins`);
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to detect artwork margins');
+  }
+  return data;
+}
+
+/**
  * Get Output PDF details / stream URL
  */
 export function getOutputPdfUrl(fileId) {

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, EyeOff, BookOpen, Layers, Bookmark } from 'lucide-react';
+import { Eye, EyeOff, BookOpen, Layers, Bookmark, Package } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * CIP4 / PREPS STANDARD FOLD PATTERN DEFINITIONS FOR FRONTEND PREVIEW
@@ -292,115 +292,214 @@ function DigitalBarcodeSVG({ x, y, width = 45, height = 4.5, label = 'DIGI-CUT' 
 }
 
 // ─── Packaging Box Dieline Vector Overlay SVG ──────────────────────────────
-function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineOverlay = true, cellIndex = 1 }) {
+function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineOverlay = false, cellIndex = 1, boxParams = {} }) {
   if (!dielineOverlay) return null;
 
-  const padX = w * 0.08;
-  const padY = h * 0.08;
+  // 1. Box Structural Dimensions (mm & Proportions)
+  const L = parseFloat(boxParams?.length) || 100;
+  const W = parseFloat(boxParams?.width) || 60;
+  const H = parseFloat(boxParams?.height) || 140;
+  const G = parseFloat(boxParams?.glueTab) || 15;
+  const T = parseFloat(boxParams?.tuckFlap) || 15;
+  const bStyle = boxStyle || boxParams?.boxStyle || 'RTE';
+  const flatW = parseFloat(boxParams?.flatWidth) || (2 * L + 2 * W + G);
+  const flatH = parseFloat(boxParams?.flatHeight) || (H + 2 * T + 6);
+
+  // Proportions
+  const totalWParts = G + 2 * L + 2 * W;
+  const fG = G / totalWParts;
+  const fL1 = L / totalWParts;
+  const fW1 = W / totalWParts;
+  const fL2 = L / totalWParts;
+  const fW2 = W / totalWParts;
+
+  const totalHParts = H + 2 * T + 6;
+  const fTuckBot = T / totalHParts;
+  const fH = H / totalHParts;
+  const fTuckTop = (T + 6) / totalHParts;
+
+  // 2. Active Dieline Geometry (In SVG coords, 2% safety margin)
+  const padX = w * 0.02;
+  const padY = h * 0.02;
   const innerW = w - padX * 2;
   const innerH = h - padY * 2;
 
-  const glueW = innerW * 0.08;
-  const panelW = (innerW - glueW) / 4;
-  const tuckH = innerH * 0.12;
-  const mainH = innerH - tuckH * 2;
+  const g = innerW * fG;
+  const l1 = innerW * fL1;
+  const w1 = innerW * fW1;
+  const l2 = innerW * fL2;
+  const w2 = innerW * fW2;
+
+  const tBot = innerH * fTuckBot;
+  const mainH = innerH * fH;
+  const tTop = innerH * fTuckTop;
+
+  // Panel boundary lines
+  const u0 = x + padX;
+  const u1 = u0 + g;
+  const u2 = u1 + l1;
+  const u3 = u2 + w1;
+  const u4 = u3 + l2;
+  const u5 = u0 + innerW;
+
+  const v0 = y + padY;
+  const v1 = v0 + tBot;
+  const v2 = v1 + mainH;
+  const v3 = v0 + innerH;
 
   const cx = x + w / 2;
   const cy = y + h / 2;
+  const dimY = v1 + mainH * 0.5;
 
   return (
     <g transform={`rotate(${rot} ${cx} ${cy})`} className="box-dieline-group">
-      {/* 3mm Bleed Boundary (Green) */}
+      {/* 1. Main Die-Cut Outer Line (Red - #EF4444) */}
       <rect
-        x={x + 1}
-        y={y + 1}
-        width={w - 2}
-        height={h - 2}
-        fill="none"
-        stroke="#10B981"
-        strokeWidth="0.3"
-        strokeDasharray="2 1"
-      />
-
-      {/* Main Die-Cut Outer Line (Red) */}
-      <rect
-        x={x + padX}
-        y={y + padY}
+        x={u0}
+        y={v0}
         width={innerW}
         height={innerH}
-        fill="rgba(239, 68, 68, 0.03)"
+        fill="rgba(239, 68, 68, 0.02)"
         stroke="#EF4444"
         strokeWidth="0.5"
       />
 
-      {/* Internal Crease / Fold Score Lines (Blue Dashed) */}
-      {[1, 2, 3].map((i) => (
-        <line
-          key={i}
-          x1={x + padX + glueW + i * panelW}
-          y1={y + padY + tuckH}
-          x2={x + padX + glueW + i * panelW}
-          y2={y + padY + tuckH + mainH}
-          stroke="#3B82F6"
-          strokeWidth="0.4"
-          strokeDasharray="1.5 1.5"
-        />
-      ))}
+      {/* 2. Internal Crease / Score Lines (Blue Dashed - #3B82F6) */}
+      {/* Vertical Crease Lines */}
+      <line x1={u1} y1={v0} x2={u1} y2={v3} stroke="#3B82F6" strokeWidth="0.4" strokeDasharray="1.5 1.5" />
+      <line x1={u2} y1={v1} x2={u2} y2={v2} stroke="#3B82F6" strokeWidth="0.4" strokeDasharray="1.5 1.5" />
+      <line x1={u3} y1={v1} x2={u3} y2={v2} stroke="#3B82F6" strokeWidth="0.4" strokeDasharray="1.5 1.5" />
+      <line x1={u4} y1={v1} x2={u4} y2={v2} stroke="#3B82F6" strokeWidth="0.4" strokeDasharray="1.5 1.5" />
 
-      {/* Glue Tab Fold Line */}
-      <line
-        x1={x + padX + glueW}
-        y1={y + padY}
-        x2={x + padX + glueW}
-        y2={y + padY + innerH}
-        stroke="#3B82F6"
-        strokeWidth="0.4"
-        strokeDasharray="1.5 1.5"
-      />
+      {/* Horizontal Flap Creases */}
+      <line x1={u1} y1={v1} x2={u5} y2={v1} stroke="#3B82F6" strokeWidth="0.4" strokeDasharray="1.5 1.5" />
+      <line x1={u1} y1={v2} x2={u5} y2={v2} stroke="#3B82F6" strokeWidth="0.4" strokeDasharray="1.5 1.5" />
 
-      {/* Top & Bottom Tuck Flap Creases */}
-      <line
-        x1={x + padX + glueW}
-        y1={y + padY + tuckH}
-        x2={x + padX + innerW}
-        y2={y + padY + tuckH}
-        stroke="#3B82F6"
-        strokeWidth="0.4"
-        strokeDasharray="1.5 1.5"
-      />
-      <line
-        x1={x + padX + glueW}
-        y1={y + padY + tuckH + mainH}
-        x2={x + padX + innerW}
-        y2={y + padY + tuckH + mainH}
-        stroke="#3B82F6"
-        strokeWidth="0.4"
-        strokeDasharray="1.5 1.5"
-      />
-
-      {/* Box Panel Badge */}
-      <rect
-        x={cx - 18}
-        y={cy - 5}
-        width="36"
-        height="10"
-        rx="2"
-        fill="rgba(15, 23, 42, 0.85)"
+      {/* 3. Thumb Hole Cutout Notch (Top Flap) */}
+      <circle
+        cx={u1 + l1 / 2}
+        cy={v2 + tTop * 0.55}
+        r={Math.min(7, tTop * 0.35)}
+        fill="none"
         stroke="#EF4444"
-        strokeWidth="0.3"
+        strokeWidth="0.45"
       />
-      <text
-        x={cx}
-        y={cy + 1}
-        fill="#FCA5A5"
-        fontSize="2.4"
-        fontFamily="monospace"
-        fontWeight="bold"
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
-        BOX #{cellIndex} ({rot}° {rot === 180 ? 'INTERLOCK' : ''})
-      </text>
+
+      {/* 4. CAD Dimension Measurement Guides & Badges */}
+      {(() => {
+        const isInch = boxParams?.unit === 'inch' || L < 20;
+        const uSuffix = isInch ? '"' : 'mm';
+        return (
+          <>
+            {/* Panel 1 (Glue Tab): G */}
+            <g>
+              <line x1={u0} y1={dimY} x2={u1} y2={dimY} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u0} y1={dimY - 1.5} x2={u0} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u1} y1={dimY - 1.5} x2={u1} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <rect x={u0 + g / 2 - 6} y={dimY - 2.5} width="12" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u0 + g / 2} y={dimY + 0.8} fill="#BAE6FD" fontSize="2.2" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                G:{G}{uSuffix}
+              </text>
+            </g>
+
+            {/* Panel 2 (Face/Back): L */}
+            <g>
+              <line x1={u1} y1={dimY} x2={u2} y2={dimY} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u1} y1={dimY - 1.5} x2={u1} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u2} y1={dimY - 1.5} x2={u2} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <rect x={u1 + l1 / 2 - 10} y={dimY - 2.5} width="20" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u1 + l1 / 2} y={dimY + 0.8} fill="#BAE6FD" fontSize="2.2" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                {L}{uSuffix} (L)
+              </text>
+            </g>
+
+            {/* Panel 3 (Side/Depth): W */}
+            <g>
+              <line x1={u2} y1={dimY} x2={u3} y2={dimY} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u2} y1={dimY - 1.5} x2={u2} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u3} y1={dimY - 1.5} x2={u3} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <rect x={u2 + w1 / 2 - 9} y={dimY - 2.5} width="18" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u2 + w1 / 2} y={dimY + 0.8} fill="#BAE6FD" fontSize="2.2" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                {W}{uSuffix} (W)
+              </text>
+            </g>
+
+            {/* Panel 4 (Face/Back): L */}
+            <g>
+              <line x1={u3} y1={dimY} x2={u4} y2={dimY} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u3} y1={dimY - 1.5} x2={u3} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u4} y1={dimY - 1.5} x2={u4} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <rect x={u3 + l2 / 2 - 10} y={dimY - 2.5} width="20" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u3 + l2 / 2} y={dimY + 0.8} fill="#BAE6FD" fontSize="2.2" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                {L}{uSuffix} (L)
+              </text>
+            </g>
+
+            {/* Panel 5 (Side/Depth): W */}
+            <g>
+              <line x1={u4} y1={dimY} x2={u5} y2={dimY} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u4} y1={dimY - 1.5} x2={u4} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u5} y1={dimY - 1.5} x2={u5} y2={dimY + 1.5} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <rect x={u4 + w2 / 2 - 9} y={dimY - 2.5} width="18" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u4 + w2 / 2} y={dimY + 0.8} fill="#BAE6FD" fontSize="2.2" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                {W}{uSuffix} (W)
+              </text>
+            </g>
+
+            {/* Height Dimension (H): Vertical Along Side */}
+            <g>
+              <line x1={u4 + w2 * 0.85} y1={v1} x2={u4 + w2 * 0.85} y2={v2} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u4 + w2 * 0.85 - 1.5} y1={v1} x2={u4 + w2 * 0.85 + 1.5} y2={v1} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <line x1={u4 + w2 * 0.85 - 1.5} y1={v2} x2={u4 + w2 * 0.85 + 1.5} y2={v2} stroke="#38BDF8" strokeWidth="0.25" opacity="0.7" />
+              <rect x={u4 + w2 * 0.85 - 10} y={dimY - 2.5} width="20" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u4 + w2 * 0.85} y={dimY + 0.8} fill="#BAE6FD" fontSize="2.2" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                H: {H}{uSuffix}
+              </text>
+            </g>
+
+            {/* Top Tuck Flap Dimension */}
+            <g>
+              <rect x={u3 + l2 / 2 - 10} y={v2 + tTop * 0.5 - 2.5} width="20" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u3 + l2 / 2} y={v2 + tTop * 0.5 + 0.8} fill="#BAE6FD" fontSize="2.0" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                Tuck: {T}{uSuffix}
+              </text>
+            </g>
+
+            {/* Bottom Tuck Flap Dimension */}
+            <g>
+              <rect x={u1 + l1 / 2 - 10} y={v0 + tBot * 0.5 - 2.5} width="20" height="5" rx="1" fill="rgba(15, 23, 42, 0.9)" stroke="#38BDF8" strokeWidth="0.2" />
+              <text x={u1 + l1 / 2} y={v0 + tBot * 0.5 + 0.8} fill="#BAE6FD" fontSize="2.0" fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+                Tuck: {T}{uSuffix}
+              </text>
+            </g>
+
+            {/* Overall Dieline Footprint Badge */}
+            <g>
+              <rect
+                x={u1 + l1 / 2 - 26}
+                y={v1 + mainH * 0.85 - 3}
+                width="52"
+                height="6"
+                rx="1.5"
+                fill="rgba(15, 23, 42, 0.92)"
+                stroke="#EF4444"
+                strokeWidth="0.3"
+              />
+              <text
+                x={u1 + l1 / 2}
+                y={v1 + mainH * 0.85 + 1}
+                fill="#FCA5A5"
+                fontSize="2.4"
+                fontFamily="monospace"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                DIE: {flatW} × {flatH} {uSuffix} ({bStyle})
+              </text>
+            </g>
+          </>
+        );
+      })()}
     </g>
   );
 }
@@ -410,6 +509,7 @@ function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineO
 // ═══════════════════════════════════════════════════════════════════════════
 export default function SheetPreview({
   partMode = 'TEXT', // 'TEXT' | 'COVER' | 'BOX'
+  jobTitle = '',
   sheetWidth = 320,
   sheetHeight = 450,
   columns = 2,
@@ -617,10 +717,27 @@ export default function SheetPreview({
     const c = Math.max(1, parseInt(columns) || 2);
     const r = Math.max(1, parseInt(rows) || 3);
 
-    const printableW = sw - ml - mr;
-    const printableH = sh - mt - mb;
-    const cellW = (printableW - gx * (c - 1)) / c;
-    const cellH = (printableH - gy * (r - 1)) / r;
+    const printableW = Math.max(0, sw - ml - mr);
+    const printableH = Math.max(0, sh - mt - mb);
+
+    const isBox = partMode === 'BOX';
+    const isInch = boxParams?.unit === 'inch' || (boxParams?.length && parseFloat(boxParams.length) < 20) || (sw / 25.4 >= 10);
+    
+    // Determine effective box dimensions (trimmed footprint)
+    const effBoxW_mm = parseFloat(boxParams?.effectiveBoxWidth) || 
+      (isInch ? (parseFloat(boxParams?.flatWidth) || 11.84) * 25.4 : (parseFloat(boxParams?.flatWidth) || 300));
+    const effBoxH_mm = parseFloat(boxParams?.effectiveBoxHeight) || 
+      (isInch ? (parseFloat(boxParams?.flatHeight) || 9.37) * 25.4 : (parseFloat(boxParams?.flatHeight) || 238));
+
+    // When in box mode, use exact box footprint rather than artificially stretching cells
+    const cellW = isBox ? effBoxW_mm : Math.max(10, (printableW - gx * (c - 1)) / c);
+    const cellH = isBox ? effBoxH_mm : Math.max(10, (printableH - gy * (r - 1)) / r);
+
+    // Center the complete box grid within printable area
+    const layoutW_calc = c * cellW + (c - 1) * gx;
+    const layoutH_calc = r * cellH + (r - 1) * gy;
+    const startX = ml + Math.max(0, (printableW - layoutW_calc) / 2);
+    const startY = mt + Math.max(0, (printableH - layoutH_calc) / 2);
 
     const cells = [];
     const interlockMode = boxParams?.interlockMode || 'INTERLOCKING';
@@ -644,8 +761,8 @@ export default function SheetPreview({
         cells.push({
           row,
           col,
-          x: ml + col * (cellW + gx) + shiftX,
-          y: mt + row * (cellH + gy) + shiftY,
+          x: startX + col * (cellW + gx) + shiftX,
+          y: startY + row * (cellH + gy) + shiftY,
           w: cellW,
           h: cellH,
           rot,
@@ -655,15 +772,36 @@ export default function SheetPreview({
       }
     }
 
-    const flatW = parseFloat(boxParams?.flatWidth) || cellW;
-    const flatH = parseFloat(boxParams?.flatHeight) || cellH;
-    const boxArea = (c * r) * (flatW * flatH);
+    const flatW = parseFloat(boxParams?.flatWidth) || (isInch ? cellW / 25.4 : cellW);
+    const flatH = parseFloat(boxParams?.flatHeight) || (isInch ? cellH / 25.4 : cellH);
+    const boxArea = (c * r) * (isInch ? (flatW * 25.4) * (flatH * 25.4) : flatW * flatH);
     const sheetArea = sw * sh;
     const efficiencyPct = Math.min(100, Math.round((boxArea / sheetArea) * 1000) / 10);
     const wastePct = Math.round((100 - efficiencyPct) * 10) / 10;
 
-    return { sw, sh, mt, mb, ml, mr, gx, gy, bl, c, r, cellW, cellH, cells, printableW, printableH, efficiencyPct, wastePct };
-  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages]);
+    // Calculate layout bounding box
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    cells.forEach(cell => {
+      if (cell.x < minX) minX = cell.x;
+      if (cell.x + cell.w > maxX) maxX = cell.x + cell.w;
+      if (cell.y < minY) minY = cell.y;
+      if (cell.y + cell.h > maxY) maxY = cell.y + cell.h;
+    });
+
+    const layoutW_mm = maxX - minX;
+    const layoutH_mm = maxY - minY;
+    const dimW_text = isInch ? `${(layoutW_mm / 25.4).toFixed(2)}"` : `${layoutW_mm.toFixed(1)} mm`;
+    const dimH_text = isInch ? `${(layoutH_mm / 25.4).toFixed(2)}"` : `${layoutH_mm.toFixed(1)} mm`;
+    const sheetW_in = Math.round(sw / 25.4);
+    const sheetH_in = Math.round(sh / 25.4);
+    const sheetSizeText = isInch ? `${Math.min(sheetW_in, sheetH_in)} x ${Math.max(sheetW_in, sheetH_in)} inch` : `${Math.round(sw)} x ${Math.round(sh)} mm`;
+
+    return {
+      sw, sh, mt, mb, ml, mr, gx, gy, bl, c, r, cellW, cellH, cells,
+      printableW, printableH, efficiencyPct, wastePct,
+      minX, maxX, minY, maxY, layoutW_mm, layoutH_mm, isInch, dimW_text, dimH_text, sheetSizeText
+    };
+  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages, partMode]);
 
   // ─── Total Signatures / Forms ───────────────────────────────────────────
   const layoutPagesCount = parseInt(selectedLayout, 10) || 16;
@@ -685,7 +823,8 @@ export default function SheetPreview({
   }, [layoutPagesCount, totalBookPages, sheetIndex, activeSide, impositionMode, textLayout.c, textLayout.r, workStyle]);
 
   // SVG viewBox
-  const pad = 20;
+  const isBoxMode = partMode === 'BOX';
+  const pad = isBoxMode ? 32 : 24;
   const sw = partMode === 'COVER' ? coverLayout.sw : (partMode === 'BOX' ? boxLayout.sw : textLayout.sw);
   const sh = partMode === 'COVER' ? coverLayout.sh : (partMode === 'BOX' ? boxLayout.sh : textLayout.sh);
   const vbW = sw + pad * 2;
@@ -728,6 +867,19 @@ export default function SheetPreview({
             <span className="flex items-center gap-1.5 text-amber-300 font-semibold">
               <Bookmark className="w-3.5 h-3.5 text-amber-400" />
               Wraparound Cover Spread ({coverParams?.spineWidth?.toFixed(1) || '5.3'}mm Spine)
+              <span className="text-slate-500">•</span>
+              <span className="text-cyan-400 font-semibold">Sheet: {sw} × {sh} mm</span>
+            </span>
+          ) : partMode === 'BOX' ? (
+            <span className="flex items-center gap-1.5 flex-wrap">
+              <Package className="w-3.5 h-3.5 text-emerald-400" />
+              <strong className="text-emerald-300">Box Packaging ({boxLayout.c}×{boxLayout.r} = {boxLayout.c * boxLayout.r}-Up)</strong>
+              <span className="text-slate-500">•</span>
+              <span className="text-cyan-400 font-semibold bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                Sheet: {sw} × {sh} mm
+              </span>
+              <span className="text-slate-500">•</span>
+              <span className="text-emerald-400 font-semibold">Flat Box: {parseFloat(boxParams?.flatWidth) || boxLayout.cellW} × {parseFloat(boxParams?.flatHeight) || boxLayout.cellH} mm</span>
             </span>
           ) : (
             <span className="flex items-center gap-1.5 flex-wrap">
@@ -737,6 +889,10 @@ export default function SheetPreview({
               <span>Pages {currentSigStart}–{currentSigEnd}</span>
               <span className="text-slate-500">•</span>
               <span className="text-slate-400">{layoutPagesCount}PP {impositionMode}</span>
+              <span className="text-slate-500">•</span>
+              <span className="text-cyan-400 font-semibold bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/60">
+                Sheet: {sw} × {sh} mm
+              </span>
               {bookWidth && bookHeight ? (
                 <>
                   <span className="text-slate-500">•</span>
@@ -830,8 +986,298 @@ export default function SheetPreview({
             strokeWidth="0.3"
           />
 
-          {/* CMYK Color Bars */}
-          {colorBars && (
+          {/* ═════════════════════════════════════════════════════════════════
+              SHEET DIMENSIONS & KLD CAD ANNOTATIONS
+             ═════════════════════════════════════════════════════════════════ */}
+          {isBoxMode ? (
+            /* ─── PACKAGING CAD / KLD PROOF PRESENTATION (Matches Image 2) ─── */
+            <g className="kld-cad-annotations">
+              {/* 1. Header Title */}
+              <text
+                x={pad + sw / 2}
+                y={pad - 18}
+                textAnchor="middle"
+                fontSize="4.5"
+                fontFamily="monospace"
+                fontWeight="bold"
+                fill="#0F172A"
+              >
+                {`${(jobTitle || 'Acuzie 100 Ml MAIN FILE_EXPANDED_FINAL').replace(/\.pdf$/i, '')} _ KLD _ Sheet Size ${boxLayout.sheetSizeText} _ ${boxLayout.c * boxLayout.r} ups`}
+              </text>
+
+              {/* 2. Top Horizontal CAD Dimension Line (Layout Width, e.g. 25.01") */}
+              <g className="kld-top-dimension">
+                {/* Vertical extension lines from layout top to dimension line */}
+                <line
+                  x1={pad + boxLayout.minX}
+                  y1={pad + boxLayout.minY}
+                  x2={pad + boxLayout.minX}
+                  y2={pad - 8}
+                  stroke="#0284C7"
+                  strokeWidth="0.35"
+                />
+                <line
+                  x1={pad + boxLayout.maxX}
+                  y1={pad + boxLayout.minY}
+                  x2={pad + boxLayout.maxX}
+                  y2={pad - 8}
+                  stroke="#0284C7"
+                  strokeWidth="0.35"
+                />
+                {/* Horizontal dimension line */}
+                <line
+                  x1={pad + boxLayout.minX}
+                  y1={pad - 8}
+                  x2={pad + boxLayout.maxX}
+                  y2={pad - 8}
+                  stroke="#0284C7"
+                  strokeWidth="0.4"
+                />
+                {/* Arrowhead Left */}
+                <path
+                  d={`M ${pad + boxLayout.minX + 3.5} ${pad - 9.5} L ${pad + boxLayout.minX} ${pad - 8} L ${pad + boxLayout.minX + 3.5} ${pad - 6.5}`}
+                  fill="none"
+                  stroke="#0284C7"
+                  strokeWidth="0.45"
+                />
+                {/* Arrowhead Right */}
+                <path
+                  d={`M ${pad + boxLayout.maxX - 3.5} ${pad - 9.5} L ${pad + boxLayout.maxX} ${pad - 8} L ${pad + boxLayout.maxX - 3.5} ${pad - 6.5}`}
+                  fill="none"
+                  stroke="#0284C7"
+                  strokeWidth="0.45"
+                />
+                {/* Dimension Badge with White Background */}
+                <rect
+                  x={pad + (boxLayout.minX + boxLayout.maxX) / 2 - 16}
+                  y={pad - 10.5}
+                  width="32"
+                  height="5.5"
+                  rx="1"
+                  fill="#FFFFFF"
+                  stroke="#0284C7"
+                  strokeWidth="0.35"
+                />
+                <text
+                  x={pad + (boxLayout.minX + boxLayout.maxX) / 2}
+                  y={pad - 6.5}
+                  textAnchor="middle"
+                  fontSize="3.6"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                  fill="#0284C7"
+                >
+                  {boxLayout.dimW_text}
+                </text>
+              </g>
+
+              {/* 3. Left Vertical CAD Dimension Line (Layout Height, e.g. 16.87") */}
+              <g className="kld-left-dimension">
+                {/* Horizontal extension lines from layout left to dimension line */}
+                <line
+                  x1={pad + boxLayout.minX}
+                  y1={pad + boxLayout.minY}
+                  x2={pad - 12}
+                  y2={pad + boxLayout.minY}
+                  stroke="#0284C7"
+                  strokeWidth="0.35"
+                />
+                <line
+                  x1={pad + boxLayout.minX}
+                  y1={pad + boxLayout.maxY}
+                  x2={pad - 12}
+                  y2={pad + boxLayout.maxY}
+                  stroke="#0284C7"
+                  strokeWidth="0.35"
+                />
+                {/* Vertical dimension line */}
+                <line
+                  x1={pad - 12}
+                  y1={pad + boxLayout.minY}
+                  x2={pad - 12}
+                  y2={pad + boxLayout.maxY}
+                  stroke="#0284C7"
+                  strokeWidth="0.4"
+                />
+                {/* Arrowhead Top */}
+                <path
+                  d={`M ${pad - 13.5} ${pad + boxLayout.minY + 3.5} L ${pad - 12} ${pad + boxLayout.minY} L ${pad - 10.5} ${pad + boxLayout.minY + 3.5}`}
+                  fill="none"
+                  stroke="#0284C7"
+                  strokeWidth="0.45"
+                />
+                {/* Arrowhead Bottom */}
+                <path
+                  d={`M ${pad - 13.5} ${pad + boxLayout.maxY - 3.5} L ${pad - 12} ${pad + boxLayout.maxY} L ${pad - 10.5} ${pad + boxLayout.maxY - 3.5}`}
+                  fill="none"
+                  stroke="#0284C7"
+                  strokeWidth="0.45"
+                />
+                {/* Vertical Dimension Badge with White Background (Rotated -90°) */}
+                <g transform={`translate(${pad - 12}, ${pad + (boxLayout.minY + boxLayout.maxY) / 2}) rotate(-90)`}>
+                  <rect
+                    x="-16"
+                    y="-2.75"
+                    width="32"
+                    height="5.5"
+                    rx="1"
+                    fill="#FFFFFF"
+                    stroke="#0284C7"
+                    strokeWidth="0.35"
+                  />
+                  <text
+                    x="0"
+                    y="1.2"
+                    textAnchor="middle"
+                    fontSize="3.6"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    fill="#0284C7"
+                  >
+                    {boxLayout.dimH_text}
+                  </text>
+                </g>
+              </g>
+            </g>
+          ) : (
+            /* ─── STANDARD SHEET DIMENSION BARS ────────────────────────────── */
+            <>
+              {/* Top Dimension: Sheet Width */}
+              <g className="sheet-dimension-top">
+                <line
+                  x1={pad}
+                  y1={pad}
+                  x2={pad}
+                  y2={pad - 15}
+                  stroke="#0EA5E9"
+                  strokeWidth="0.35"
+                  strokeDasharray="2 1"
+                  opacity="0.8"
+                />
+                <line
+                  x1={pad + sw}
+                  y1={pad}
+                  x2={pad + sw}
+                  y2={pad - 15}
+                  stroke="#0EA5E9"
+                  strokeWidth="0.35"
+                  strokeDasharray="2 1"
+                  opacity="0.8"
+                />
+                <line
+                  x1={pad}
+                  y1={pad - 8}
+                  x2={pad + sw}
+                  y2={pad - 8}
+                  stroke="#0EA5E9"
+                  strokeWidth="0.5"
+                />
+                <path
+                  d={`M ${pad + 3} ${pad - 9.8} L ${pad} ${pad - 8} L ${pad + 3} ${pad - 6.2}`}
+                  fill="none"
+                  stroke="#0EA5E9"
+                  strokeWidth="0.5"
+                />
+                <path
+                  d={`M ${pad + sw - 3} ${pad - 9.8} L ${pad + sw} ${pad - 8} L ${pad + sw - 3} ${pad - 6.2}`}
+                  fill="none"
+                  stroke="#0EA5E9"
+                  strokeWidth="0.5"
+                />
+                <rect
+                  x={pad + sw / 2 - 36}
+                  y={pad - 14}
+                  width={72}
+                  height={11}
+                  rx="2.5"
+                  fill="#0B132B"
+                  stroke="#38BDF8"
+                  strokeWidth="0.6"
+                />
+                <text
+                  x={pad + sw / 2}
+                  y={pad - 6.8}
+                  textAnchor="middle"
+                  fontSize="4.2"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                  fill="#38BDF8"
+                >
+                  ↔ WIDTH: {sw} mm
+                </text>
+              </g>
+
+              {/* Left Dimension: Sheet Height */}
+              <g className="sheet-dimension-left">
+                <line
+                  x1={pad}
+                  y1={pad}
+                  x2={pad - 15}
+                  y2={pad}
+                  stroke="#0EA5E9"
+                  strokeWidth="0.35"
+                  strokeDasharray="2 1"
+                  opacity="0.8"
+                />
+                <line
+                  x1={pad}
+                  y1={pad + sh}
+                  x2={pad - 15}
+                  y2={pad + sh}
+                  stroke="#0EA5E9"
+                  strokeWidth="0.35"
+                  strokeDasharray="2 1"
+                  opacity="0.8"
+                />
+                <line
+                  x1={pad - 8}
+                  y1={pad}
+                  x2={pad - 8}
+                  y2={pad + sh}
+                  stroke="#0EA5E9"
+                  strokeWidth="0.5"
+                />
+                <path
+                  d={`M ${pad - 9.8} ${pad + 3} L ${pad - 8} ${pad} L ${pad - 6.2} ${pad + 3}`}
+                  fill="none"
+                  stroke="#0EA5E9"
+                  strokeWidth="0.5"
+                />
+                <path
+                  d={`M ${pad - 9.8} ${pad + sh - 3} L ${pad - 8} ${pad + sh} L ${pad - 6.2} ${pad + sh - 3}`}
+                  fill="none"
+                  stroke="#0EA5E9"
+                  strokeWidth="0.5"
+                />
+                <g transform={`translate(${pad - 8}, ${pad + sh / 2}) rotate(-90)`}>
+                  <rect
+                    x={-36}
+                    y={-5.5}
+                    width={72}
+                    height={11}
+                    rx="2.5"
+                    fill="#0B132B"
+                    stroke="#38BDF8"
+                    strokeWidth="0.6"
+                  />
+                  <text
+                    x={0}
+                    y={1.8}
+                    textAnchor="middle"
+                    fontSize="4.2"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    fill="#38BDF8"
+                  >
+                    ↕ HEIGHT: {sh} mm
+                  </text>
+                </g>
+              </g>
+            </>
+          )}
+
+          {/* CMYK Color Bars (Suppressed in Box KLD mode) */}
+          {colorBars && !isBoxMode && (
             <>
               <ColorBar
                 x={pad + (partMode === 'COVER' ? coverLayout.ml : textLayout.ml)}
@@ -848,8 +1294,8 @@ export default function SheetPreview({
             </>
           )}
 
-          {/* Margins Boundary */}
-          {showMargins && (
+          {/* Margins Boundary (Suppressed in Box KLD mode) */}
+          {showMargins && !isBoxMode && (
             <rect
               x={pad + (partMode === 'COVER' ? coverLayout.ml : textLayout.ml)}
               y={pad + (partMode === 'COVER' ? coverLayout.mt : textLayout.mt)}
@@ -1069,6 +1515,19 @@ export default function SheetPreview({
 
                 return (
                   <g key={`box-cell-${cell.idx}`}>
+                    {/* Defs clip path for trimmed cell artwork */}
+                    <defs>
+                      <clipPath id={`box-clip-${cell.idx}`}>
+                        <rect
+                          x={pad + cell.x}
+                          y={pad + cell.y}
+                          width={cell.w}
+                          height={cell.h}
+                          rx="0.5"
+                        />
+                      </clipPath>
+                    </defs>
+
                     {/* Cell slot rectangle */}
                     <rect
                       x={pad + cell.x}
@@ -1080,33 +1539,98 @@ export default function SheetPreview({
                       strokeWidth="0.3"
                     />
 
-                    {/* PDF Artwork Image (Rotated for Interlocking) */}
-                    {hasArtwork && (
-                      <image
-                        href={thumbUrl}
+                    {/* PDF Artwork Image (Rotated for Interlocking & Clipped if Trimmed) */}
+                    {hasArtwork && (() => {
+                      const srcW = parseFloat(boxParams?.sourcePdfWidth) || cell.w;
+                      const srcH = parseFloat(boxParams?.sourcePdfHeight) || cell.h;
+                      const tLeft = Math.max(0, parseFloat(boxParams?.trimLeft) || 0);
+                      const tRight = Math.max(0, parseFloat(boxParams?.trimRight) || 0);
+                      const tTop = Math.max(0, parseFloat(boxParams?.trimTop) || 0);
+                      const tBottom = Math.max(0, parseFloat(boxParams?.trimBottom) || 0);
+                      const isTrimmed = tLeft > 0 || tRight > 0 || tTop > 0 || tBottom > 0;
+
+                      if (!isTrimmed) {
+                        return (
+                          <image
+                            href={thumbUrl}
+                            x={pad + cell.x}
+                            y={pad + cell.y}
+                            width={cell.w}
+                            height={cell.h}
+                            preserveAspectRatio="xMidYMid meet"
+                            transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
+                          />
+                        );
+                      }
+
+                      const cropW = Math.max(10, srcW - tLeft - tRight);
+                      const cropH = Math.max(10, srcH - tTop - tBottom);
+                      const scaleX = cell.w / cropW;
+                      const scaleY = cell.h / cropH;
+                      const imgW = srcW * scaleX;
+                      const imgH = srcH * scaleY;
+                      const imgX = pad + cell.x - (tLeft * scaleX);
+                      const imgY = pad + cell.y - (tTop * scaleY);
+
+                      return (
+                        <g clipPath={`url(#box-clip-${cell.idx})`}>
+                          <image
+                            href={thumbUrl}
+                            x={imgX}
+                            y={imgY}
+                            width={imgW}
+                            height={imgH}
+                            preserveAspectRatio="none"
+                            transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
+                          />
+                        </g>
+                      );
+                    })()}
+
+                    {/* Trimmed indicator badge */}
+                    {hasArtwork && ((parseFloat(boxParams?.trimTop) || 0) > 0 || (parseFloat(boxParams?.trimBottom) || 0) > 0) && (
+                      <g>
+                        <rect
+                          x={pad + cell.x + 2}
+                          y={pad + cell.y + cell.h - 6.5}
+                          width={46}
+                          height={5}
+                          rx="1"
+                          fill="rgba(15, 23, 42, 0.88)"
+                          stroke="#10B981"
+                          strokeWidth="0.2"
+                        />
+                        <text
+                          x={pad + cell.x + 25}
+                          y={pad + cell.y + cell.h - 3}
+                          textAnchor="middle"
+                          fontSize="2.6"
+                          fontFamily="monospace"
+                          fontWeight="bold"
+                          fill="#34D399"
+                        >
+                          TRIMMED (-{Math.round(((parseFloat(boxParams?.trimTop) || 0) + (parseFloat(boxParams?.trimBottom) || 0)) * 100) / 100}{boxParams?.unit === 'inch' ? '"' : 'mm'})
+                        </text>
+                      </g>
+                    )}
+
+                    {/* Vector Dieline Overlay - Only shown when Key Die Lines is explicitly checked */}
+                    {Boolean(boxParams?.dielineOverlay) && (
+                      <BoxCellDielineOverlay
                         x={pad + cell.x}
                         y={pad + cell.y}
-                        width={cell.w}
-                        height={cell.h}
-                        preserveAspectRatio="xMidYMid meet"
-                        transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
+                        w={cell.w}
+                        h={cell.h}
+                        rot={cell.rot}
+                        boxStyle={boxParams?.boxStyle || 'RTE'}
+                        dielineOverlay={true}
+                        cellIndex={cell.idx + 1}
+                        boxParams={boxParams}
                       />
                     )}
 
-                    {/* Vector Dieline Overlay */}
-                    <BoxCellDielineOverlay
-                      x={pad + cell.x}
-                      y={pad + cell.y}
-                      w={cell.w}
-                      h={cell.h}
-                      rot={cell.rot}
-                      boxStyle={boxParams?.boxStyle || 'RTE'}
-                      dielineOverlay={boxParams?.dielineOverlay !== false}
-                      cellIndex={cell.idx + 1}
-                    />
-
-                    {/* Crop marks at cell corners */}
-                    {cropMarks && (
+                    {/* Crop marks at cell corners (Suppressed when Key Die Lines are shown) */}
+                    {cropMarks && !boxParams?.dielineOverlay && (
                       <CropMarksSVG
                         x={pad + cell.x}
                         y={pad + cell.y}
@@ -1336,7 +1860,7 @@ export default function SheetPreview({
           )}
 
           {/* Optical Camera Marks (Safely positioned strictly within waste margins - NEVER overlapping book page) */}
-          {cameraMarks && (() => {
+          {cameraMarks && !isBoxMode && (() => {
             const ml = parseFloat(marginLeft) || 0;
             const mr = parseFloat(marginRight) || 0;
             const mt = parseFloat(marginTop) || 0;
@@ -1462,7 +1986,7 @@ export default function SheetPreview({
           })()}
 
           {/* Kodak Fold & Knife Alignment Marks */}
-          {foldMarks && (
+          {foldMarks && !isBoxMode && (
             <FoldMarksSVG
               sw={sw}
               sh={sh}
@@ -1536,7 +2060,9 @@ export default function SheetPreview({
           >
             {partMode === 'COVER'
               ? `COVER SPREAD | ${activeSide === 'FRONT' ? 'OUTSIDE' : 'INSIDE'} | ${sw} × ${sh} mm`
-              : `SIG ${(parseInt(sheetIndex, 10) || 0) + 1}/${totalSignatures} | ${activeSide} | PAGES ${currentSigStart}–${currentSigEnd} | ${layoutPagesCount}PP ${impositionMode} | SHEET ${sw} × ${sh} mm${bookWidth && bookHeight ? ` | BOOK TRIM ${bookWidth} × ${bookHeight} mm` : ''}`}
+              : partMode === 'BOX'
+                ? `BOX PACKAGING | ${activeSide === 'FRONT' ? 'OUTSIDE' : 'INSIDE'} | ${boxLayout.c}×${boxLayout.r} (${boxLayout.c * boxLayout.r}-UP) | SHEET ${sw} × ${sh} mm | EFFICIENCY ${boxLayout.efficiencyPct}%`
+                : `SIG ${(parseInt(sheetIndex, 10) || 0) + 1}/${totalSignatures} | ${activeSide} | PAGES ${currentSigStart}–${currentSigEnd} | ${layoutPagesCount}PP ${impositionMode} | SHEET ${sw} × ${sh} mm${bookWidth && bookHeight ? ` | BOOK TRIM ${bookWidth} × ${bookHeight} mm` : ''}`}
           </text>
         </svg>
       </div>
