@@ -1498,6 +1498,41 @@ export default function SheetPreview({
                   cellH={coverLayout.printableH}
                 />
               )}
+
+              {/* Optional Key Die Lines (Cover Perimeter Cut) */}
+              {Boolean(boxParams?.dielineOverlay) && (
+                <g className="cover-key-die-lines">
+                  <rect
+                    x={pad + coverLayout.ml}
+                    y={pad + coverLayout.mt}
+                    width={coverLayout.printableW}
+                    height={coverLayout.printableH}
+                    fill="none"
+                    stroke="#EF4444"
+                    strokeWidth="0.45"
+                    strokeDasharray="4 2"
+                  />
+                  <rect
+                    x={pad + coverLayout.ml + 2}
+                    y={pad + coverLayout.mt + 2}
+                    width={38}
+                    height={4.5}
+                    rx="1"
+                    fill="rgba(239, 68, 68, 0.9)"
+                  />
+                  <text
+                    x={pad + coverLayout.ml + 21}
+                    y={pad + coverLayout.mt + 5.2}
+                    textAnchor="middle"
+                    fontSize="2.4"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    fill="#FFFFFF"
+                  >
+                    KEY DIE LINE (COVER)
+                  </text>
+                </g>
+              )}
             </g>
           )}
 
@@ -1856,6 +1891,41 @@ export default function SheetPreview({
                   cellH={cell.h}
                 />
               ))}
+
+              {/* Optional Key Die Lines per page cell (Red Cut Line) */}
+              {Boolean(boxParams?.dielineOverlay) && textLayout.cells.map((cell, ci) => (
+                <g key={`kdl-cell-${ci}`}>
+                  <rect
+                    x={pad + cell.x}
+                    y={pad + cell.y}
+                    width={cell.w}
+                    height={cell.h}
+                    fill="none"
+                    stroke="#EF4444"
+                    strokeWidth="0.45"
+                    strokeDasharray="4 2"
+                  />
+                  <rect
+                    x={pad + cell.x + 2}
+                    y={pad + cell.y + 2}
+                    width={28}
+                    height={4.5}
+                    rx="1"
+                    fill="rgba(239, 68, 68, 0.9)"
+                  />
+                  <text
+                    x={pad + cell.x + 16}
+                    y={pad + cell.y + 5.2}
+                    textAnchor="middle"
+                    fontSize="2.4"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    fill="#FFFFFF"
+                  >
+                    DIE CUT LINE
+                  </text>
+                </g>
+              ))}
             </g>
           )}
 
@@ -2044,6 +2114,33 @@ export default function SheetPreview({
                 fontWeight="bold"
               >
                 ⚠️ LEAD GRIPPER MARGIN &lt; 4.5mm
+              </text>
+            </g>
+          )}
+
+          {/* Box Layout Out of Sheet Bounds Warning Badge */}
+          {partMode === 'BOX' && (boxLayout.layoutW_mm > boxLayout.printableW || boxLayout.layoutH_mm > boxLayout.printableH) && (
+            <g className="layout-overflow-warning">
+              <rect
+                x={pad + sw / 2 - 80}
+                y={pad + 8}
+                width={160}
+                height={8}
+                rx="2"
+                fill="#7F1D1D"
+                stroke="#EF4444"
+                strokeWidth="0.8"
+              />
+              <text
+                x={pad + sw / 2}
+                y={pad + 13.5}
+                textAnchor="middle"
+                fontSize="3.2"
+                fontFamily="monospace"
+                fill="#FECACA"
+                fontWeight="bold"
+              >
+                ⚠️ OUT OF SIZE: LAYOUT EXCEEDS PRESS SHEET
               </text>
             </g>
           )}

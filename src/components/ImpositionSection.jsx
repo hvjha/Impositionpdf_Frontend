@@ -61,11 +61,177 @@ const SHEET_PRESETS = [
   { name: '20×26"', label: '20 × 26 in (508 × 660 mm) • Offset Short', width: 508, height: 660, tech: 'OFFSET' },
   { name: '23×36"', label: '23 × 36 in (584 × 914 mm) • Offset 8-up', width: 584, height: 914, tech: 'OFFSET' },
   { name: '25×38"', label: '25 × 38 in (635 × 965 mm) • Offset Book', width: 635, height: 965, tech: 'OFFSET' },
+  { name: '28×40"', label: '28 × 40 in (711 × 1016 mm) • Full-Size Offset', width: 711, height: 1016, tech: 'OFFSET' },
+  { name: '30×40"', label: '30 × 40 in (762 × 1016 mm) • Packaging Press', width: 762, height: 1016, tech: 'OFFSET' },
   { name: 'CUSTOM', label: 'Custom Press Sheet Size...', width: null, height: null, isCustom: true },
 ];
 
+/**
+ * Calculates and selects the minimum sheet size from standard presets (or custom)
+ * where the required imposition footprint fits cleanly with machine margins.
+ */
+export function findMinimumSheetSize(reqW, reqH, preferredOrientation = 'PORTRAIT') {
+  const candidates = [];
+
+  for (const preset of SHEET_PRESETS) {
+    if (!preset.width || !preset.height) continue;
+    const w = preset.width;
+    const h = preset.height;
+
+    // Check direct orientation (w, h)
+    if (w >= reqW - 0.5 && h >= reqH - 0.5) {
+      candidates.push({
+        name: preset.name,
+        label: preset.label,
+        width: w,
+        height: h,
+        orientation: w >= h ? 'LANDSCAPE' : 'PORTRAIT',
+        area: w * h,
+        marginW: w - reqW,
+        marginH: h - reqH,
+        isCustom: false
+      });
+    }
+
+    // Check rotated orientation (h, w)
+    if (h >= reqW - 0.5 && w >= reqH - 0.5 && w !== h) {
+      candidates.push({
+        name: preset.name,
+        label: preset.label,
+        width: h,
+        height: w,
+        orientation: h >= w ? 'LANDSCAPE' : 'PORTRAIT',
+        area: w * h,
+        marginW: h - reqW,
+        marginH: w - reqH,
+        isCustom: false
+      });
+    }
+  }
+
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => {
+      if (Math.abs(a.area - b.area) > 1) {
+        return a.area - b.area; // Smallest sheet area first
+      }
+      return (a.marginW + a.marginH) - (b.marginW + b.marginH);
+    });
+    return candidates[0];
+  }
+
+  // If no standard preset fits, calculate minimum exact custom sheet size
+  const customW = Math.ceil(reqW);
+  const customH = Math.ceil(reqH);
+  return {
+    name: 'CUSTOM',
+    label: `Custom (${customW} × ${customH} mm)`,
+    width: customW,
+    height: customH,
+    orientation: customW >= customH ? 'LANDSCAPE' : 'PORTRAIT',
+    area: customW * customH,
+    marginW: 0,
+    marginH: 0,
+    isCustom: true
+  };
+}
+
+/**
+ * Calculates the maximum finished page size for a signature on a given press sheet.
+ * Based on industry-standard prepress allowances:
+ * - Long sheet dimension: 2.0 inches (50.8 mm) total margin/gripper/gutter allowance.
+ * - Short sheet dimension: 1.0 inch (25.4 mm) total margin/gripper/gutter allowance.
+ *
+ * Examples on 23×36" sheet:
+ * - 16PP (4 cols × 2 rows): 8.5" × 11" (215.9 × 279.4 mm) [US Letter]
+ * - 32PP (4 cols × 4 rows): 5.5" × 8.5" (139.7 × 215.9 mm) [US Statement / Half-Letter]
+ * - 8PP (2 cols × 2 rows): 11" × 17" (279.4 × 431.8 mm) [US Tabloid]
+ * - 4PP (2 cols × 1 row): 17" × 22" (431.8 × 558.8 mm)
+ * - 2PP (2 cols × 1 row): 17" × 22" (431.8 × 558.8 mm)
+ */
+export function calculateMaxPageSizeForSignature(sheetW_mm, sheetH_mm, pages) {
+  const wIn = (parseFloat(sheetW_mm) || 584) / 25.4;
+  const hIn = (parseFloat(sheetH_mm) || 914) / 25.4;
+  const shortIn = Math.min(wIn, hIn);
+  const longIn = Math.max(wIn, hIn);
+
+  const longAllowanceIn = 2.0;   // 2.0 inches total allowance on long side
+  const shortAllowanceIn = 1.0;  // 1.0 inch total allowance on short side
+
+  const usableLongIn = Math.max(1, longIn - longAllowanceIn);
+  const usableShortIn = Math.max(1, shortIn - shortAllowanceIn);
+
+  let pageW_in = 0;
+  let pageH_in = 0;
+  let cols = 2;
+  let rows = 2;
+  let standardName = '';
+
+  const pp = Number(pages) || 16;
+  if (pp === 16) {
+    cols = 4;
+    rows = 2;
+    pageW_in = Math.round((usableLongIn / 4) * 100) / 100;
+    pageH_in = Math.round((usableShortIn / 2) * 100) / 100;
+    if (Math.abs(pageW_in - 8.5) < 0.15 && Math.abs(pageH_in - 11.0) < 0.15) {
+      pageW_in = 8.5;
+      pageH_in = 11.0;
+      standardName = 'US Letter (8.5 × 11")';
+    }
+  } else if (pp === 32) {
+    cols = 4;
+    rows = 4;
+    pageW_in = Math.round((usableShortIn / 4) * 100) / 100;
+    pageH_in = Math.round((usableLongIn / 4) * 100) / 100;
+    if (Math.abs(pageW_in - 5.5) < 0.15 && Math.abs(pageH_in - 8.5) < 0.15) {
+      pageW_in = 5.5;
+      pageH_in = 8.5;
+      standardName = 'US Statement / Half-Letter (5.5 × 8.5")';
+    }
+  } else if (pp === 8) {
+    cols = 2;
+    rows = 2;
+    pageW_in = Math.round((usableShortIn / 2) * 100) / 100;
+    pageH_in = Math.round((usableLongIn / 2) * 100) / 100;
+    if (Math.abs(pageW_in - 11.0) < 0.15 && Math.abs(pageH_in - 17.0) < 0.15) {
+      pageW_in = 11.0;
+      pageH_in = 17.0;
+      standardName = 'US Tabloid / Ledger (11 × 17")';
+    }
+  } else if (pp === 4 || pp === 2) {
+    cols = 2;
+    rows = 1;
+    pageW_in = Math.round((usableLongIn / 2) * 100) / 100;
+    pageH_in = Math.round((usableShortIn / 1) * 100) / 100;
+    if (Math.abs(pageW_in - 17.0) < 0.15 && Math.abs(pageH_in - 22.0) < 0.15) {
+      pageW_in = 17.0;
+      pageH_in = 22.0;
+      standardName = '17 × 22" (Folio)';
+    }
+  } else {
+    cols = Math.ceil(Math.sqrt(pp / 2));
+    rows = Math.max(1, Math.ceil((pp / 2) / cols));
+    pageW_in = Math.round((usableLongIn / cols) * 100) / 100;
+    pageH_in = Math.round((usableShortIn / rows) * 100) / 100;
+  }
+
+  const pageW_mm = Math.round((pageW_in * 25.4) * 10) / 10;
+  const pageH_mm = Math.round((pageH_in * 25.4) * 10) / 10;
+
+  return {
+    pageW_in,
+    pageH_in,
+    pageW_mm,
+    pageH_mm,
+    cols,
+    rows,
+    standardName: standardName || `${pageW_in}" × ${pageH_in}" (${pageW_mm} × ${pageH_mm} mm)`,
+    pages: pp
+  };
+}
+
 const BOOK_PRESETS = [
   { name: 'AUTO', label: 'Auto (Detect from Source PDF)', desc: 'Uses uploaded PDF page size', isAuto: true },
+  { name: 'MAX_FIT', label: 'Max Signature Fit (Optimal Sheet Fill)', desc: 'Prepress max page size for signature & press sheet', isMaxFit: true },
   { name: 'A5', label: 'A5 (148 × 210 mm)', width: 148, height: 210, desc: 'Standard Novel / Paperback' },
   { name: 'A4', label: 'A4 (210 × 297 mm)', width: 210, height: 297, desc: 'Magazines, Catalogues, Manuals' },
   { name: 'ROYAL_8VO', label: 'Royal Octavo (156 × 234 mm)', width: 156, height: 234, desc: 'Hardcover & Academic Standard' },
@@ -159,15 +325,15 @@ export default function ImpositionSection({
   const [boxCols, setBoxCols] = useState(2);
   const [boxRows, setBoxRows] = useState(2);
   const [interlockMode, setInterlockMode] = useState('INTERLOCKING'); // 'INTERLOCKING' | 'STANDARD' | 'HEAD_TO_HEAD'
-  const [dielineOverlay, setDielineOverlay] = useState(true);
+  const [dielineOverlay, setDielineOverlay] = useState(false); // Key Die Lines default to false for Book Text & Cover
   const [removeWhiteSpace, setRemoveWhiteSpace] = useState(true); // Auto-crop white space around box
   const [interlockShiftX, setInterlockShiftX] = useState(0); // Shift for interlocking alignment
   const [interlockShiftY, setInterlockShiftY] = useState(0);
   const [orderQuantity, setOrderQuantity] = useState(1000);
 
   // ─── Box In-Between Gap Trimming (Horizontal & Vertical Spacing) ───────
-  const [boxGutterX, setBoxGutterX] = useState(0); // in active packaging unit (0" or 0mm for butt-cut)
-  const [boxGutterY, setBoxGutterY] = useState(0); // in active packaging unit (0" or 0mm for touch)
+  const [boxGutterX, setBoxGutterX] = useState(0.25); // 0.25 mm margin in between boxes (die gap)
+  const [boxGutterY, setBoxGutterY] = useState(0.25); // 0.25 mm margin in between boxes (die gap)
   const [boxGuttersLinked, setBoxGuttersLinked] = useState(false);
 
   // ─── Box Artwork Trimming (Client File White Space Margins Removal) ─────
@@ -359,6 +525,21 @@ export default function ImpositionSection({
     return Math.max(1, Math.round(spine * 10) / 10);
   }, [bookLeaves, paperCaliper, hingeAllowance]);
 
+  // ─── Dynamic Prepress Signature Maximum Page Size Calculation ─────────────
+  // Calculates the optimal/maximum page size (width × height) that can fit
+  // on the currently selected press sheet for the selected signature fold scheme.
+  const maxPageSize = useMemo(() => {
+    return calculateMaxPageSizeForSignature(sheetWidth, sheetHeight, selectedLayout);
+  }, [sheetWidth, sheetHeight, selectedLayout]);
+
+  // Keep Book Size synchronized when bookPreset is 'MAX_FIT'
+  useEffect(() => {
+    if (bookPreset === 'MAX_FIT' && maxPageSize) {
+      setBookWidth(maxPageSize.pageW_mm);
+      setBookHeight(maxPageSize.pageH_mm);
+    }
+  }, [bookPreset, maxPageSize]);
+
   // Box Dieline Flat Dimensions Calculation
   const boxFlatDimensions = useMemo(() => {
     const isInch = packagingUnit === 'inch';
@@ -417,7 +598,7 @@ export default function ImpositionSection({
     return { effW, effH, savedH, savedW, srcW, srcH };
   }, [sourcePdfPageWidthMM, sourcePdfPageHeightMM, trimTop, trimBottom, trimLeft, trimRight, packagingUnit, detectedArtBox, boxFlatDimensions]);
 
-  // Auto-sync trim margins from detected ArtBox when first loaded in BOX mode
+  // Auto-sync trim margins from detected ArtBox when first loaded in BOX mode & apply 0.25 mm margin in between boxes
   useEffect(() => {
     if (partMode === 'BOX' && detectedArtBox && trimTop === 0 && trimBottom === 0 && trimLeft === 0 && trimRight === 0) {
       const isInch = packagingUnit === 'inch';
@@ -427,6 +608,8 @@ export default function ImpositionSection({
       setTrimBottom(Math.round(detectedArtBox.bottomMM * factor * roundFactor) / roundFactor);
       setTrimLeft(Math.round(detectedArtBox.leftMM * factor * roundFactor) / roundFactor);
       setTrimRight(Math.round(detectedArtBox.rightMM * factor * roundFactor) / roundFactor);
+      setBoxGutterX(isInch ? 0.01 : 0.25);
+      setBoxGutterY(isInch ? 0.01 : 0.25);
     }
   }, [partMode, detectedArtBox, packagingUnit, trimTop, trimBottom, trimLeft, trimRight]);
 
@@ -490,6 +673,91 @@ export default function ImpositionSection({
     };
   }, [sheetWidth, sheetHeight, marginLeft, marginRight, marginTop, marginBottom, gutterX, gutterY, columns, rows, bookWidth, bookHeight]);
 
+  // ─── Prepress Minimum Sheet Size Intelligence ──────────────────────────
+  // Calculates minimum sheet dimensions needed to accommodate current layout cleanly
+  const minSheetNeeded = useMemo(() => {
+    let reqW, reqH;
+    const ml = parseFloat(marginLeft) || 10;
+    const mr = parseFloat(marginRight) || 10;
+    const mt = parseFloat(marginTop) || 10;
+    const mb = parseFloat(marginBottom) || 10;
+
+    if (partMode === 'BOX') {
+      const c = Math.max(1, parseInt(boxCols, 10) || 1);
+      const r = Math.max(1, parseInt(boxRows, 10) || 1);
+      const isInch = packagingUnit === 'inch';
+      const gx = isInch ? (parseFloat(boxGutterX) || 0) * 25.4 : (parseFloat(boxGutterX) || 0);
+      const gy = isInch ? (parseFloat(boxGutterY) || 0) * 25.4 : (parseFloat(boxGutterY) || 0);
+      const boxW = effectiveBoxDimensions.effW;
+      const boxH = effectiveBoxDimensions.effH;
+
+      const layoutW = c * boxW + (c - 1) * gx;
+      const layoutH = r * boxH + (r - 1) * gy;
+      reqW = Math.ceil((layoutW + ml + mr) * 10) / 10;
+      reqH = Math.ceil((layoutH + mt + mb) * 10) / 10;
+    } else {
+      const c = Math.max(1, columns);
+      const r = Math.max(1, rows);
+      const bW = parseFloat(bookWidth) || 148;
+      const bH = parseFloat(bookHeight) || 210;
+      const gx = parseFloat(gutterX) || 0;
+      const gy = parseFloat(gutterY) || 0;
+
+      const isRotated = (parseInt(pageRotation, 10) || 0) === 90 || (parseInt(pageRotation, 10) || 0) === 270 || pageOrientation === 'LANDSCAPE';
+      const effPW = isRotated ? bH : bW;
+      const effPH = isRotated ? bW : bH;
+
+      const layoutW = c * effPW + (c - 1) * gx;
+      const layoutH = r * effPH + (r - 1) * gy;
+      reqW = Math.ceil((layoutW + ml + mr) * 10) / 10;
+      reqH = Math.ceil((layoutH + mt + mb) * 10) / 10;
+    }
+
+    const currentW = parseFloat(sheetWidth) || 0;
+    const currentH = parseFloat(sheetHeight) || 0;
+    const fitsCurrent = currentW >= reqW - 0.5 && currentH >= reqH - 0.5;
+    const bestSheet = findMinimumSheetSize(reqW, reqH, sheetOrientation);
+
+    return {
+      reqW,
+      reqH,
+      fitsCurrent,
+      bestSheet
+    };
+  }, [
+    partMode,
+    boxCols,
+    boxRows,
+    effectiveBoxDimensions,
+    packagingUnit,
+    boxGutterX,
+    boxGutterY,
+    columns,
+    rows,
+    bookWidth,
+    bookHeight,
+    gutterX,
+    gutterY,
+    marginLeft,
+    marginRight,
+    marginTop,
+    marginBottom,
+    sheetWidth,
+    sheetHeight,
+    sheetOrientation
+  ]);
+
+  // Handler to select and apply the minimum sheet size where imposition is possible
+  const applyMinimumSheetSize = (target = null) => {
+    const sheetToApply = target || minSheetNeeded.bestSheet;
+    if (!sheetToApply) return;
+    setSheetPreset(sheetToApply.name);
+    setSheetWidth(sheetToApply.width);
+    setSheetHeight(sheetToApply.height);
+    setSheetOrientation(sheetToApply.orientation);
+    setCustomSheet(sheetToApply.isCustom);
+  };
+
   // Handlers for Sheet Size
   const handleSelectSheetPreset = (preset) => {
     setSheetPreset(preset.name);
@@ -529,6 +797,10 @@ export default function ImpositionSection({
     if (presetName === 'AUTO') {
       setBookWidth(sourcePdfPageWidthMM);
       setBookHeight(sourcePdfPageHeightMM);
+      setCustomBook(false);
+    } else if (presetName === 'MAX_FIT') {
+      setBookWidth(maxPageSize.pageW_mm);
+      setBookHeight(maxPageSize.pageH_mm);
       setCustomBook(false);
     } else if (presetName === 'CUSTOM') {
       setCustomBook(true);
@@ -674,52 +946,42 @@ export default function ImpositionSection({
     const isInch = packagingUnit === 'inch';
     const roundFactor = isInch ? 100 : 10;
     const factor = isInch ? 1 / 25.4 : 1;
+    const dieGap = isInch ? 0.01 : 0.25;
+
+    let trimmedTop = 0, trimmedBot = 0, trimmedLeft = 0, trimmedRight = 0;
 
     if (detectedArtBox) {
-      const topVal = Math.round(detectedArtBox.topMM * factor * roundFactor) / roundFactor;
-      const botVal = Math.round(detectedArtBox.bottomMM * factor * roundFactor) / roundFactor;
-      const leftVal = Math.round(detectedArtBox.leftMM * factor * roundFactor) / roundFactor;
-      const rightVal = Math.round(detectedArtBox.rightMM * factor * roundFactor) / roundFactor;
-
-      setTrimLeft(leftVal);
-      setTrimRight(rightVal);
-      setTrimTop(topVal);
-      setTrimBottom(botVal);
-
-      setBoxGutterX(0);
-      setBoxGutterY(0);
-      setInterlockShiftX(0);
-      setInterlockShiftY(0);
-
-      setMarginDetectionResult({
-        success: true,
-        msg: `✨ Zero Gaps & Tight CAD Pack active! Trimmed client file margins (Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}). Gaps set to 0.00 (butt-cut).`
-      });
-      return;
+      trimmedTop = Math.round(detectedArtBox.topMM * factor * roundFactor) / roundFactor;
+      trimmedBot = Math.round(detectedArtBox.bottomMM * factor * roundFactor) / roundFactor;
+      trimmedLeft = Math.round(detectedArtBox.leftMM * factor * roundFactor) / roundFactor;
+      trimmedRight = Math.round(detectedArtBox.rightMM * factor * roundFactor) / roundFactor;
+    } else {
+      const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
+      const srcH = isInch ? (sourcePdfPageHeightMM / 25.4) : sourcePdfPageHeightMM;
+      const flatW = boxFlatDimensions.flatW;
+      const flatH = boxFlatDimensions.flatH;
+      const diffW = Math.max(0, srcW - flatW);
+      const diffH = Math.max(0, srcH - flatH);
+      trimmedLeft = Math.round((diffW / 2) * roundFactor) / roundFactor;
+      trimmedRight = trimmedLeft;
+      trimmedTop = Math.round((diffH / 2) * roundFactor) / roundFactor;
+      trimmedBot = trimmedTop;
     }
 
-    const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
-    const srcH = isInch ? (sourcePdfPageHeightMM / 25.4) : sourcePdfPageHeightMM;
-    const flatW = boxFlatDimensions.flatW;
-    const flatH = boxFlatDimensions.flatH;
-    const diffW = Math.max(0, srcW - flatW);
-    const diffH = Math.max(0, srcH - flatH);
-    const halfW = Math.round((diffW / 2) * roundFactor) / roundFactor;
-    const halfH = Math.round((diffH / 2) * roundFactor) / roundFactor;
+    setTrimLeft(trimmedLeft);
+    setTrimRight(trimmedRight);
+    setTrimTop(trimmedTop);
+    setTrimBottom(trimmedBot);
 
-    setTrimLeft(halfW);
-    setTrimRight(halfW);
-    setTrimTop(halfH);
-    setTrimBottom(halfH);
-
-    setBoxGutterX(0);
-    setBoxGutterY(0);
+    // After trim apply 0.25 mm margin in between the box
+    setBoxGutterX(dieGap);
+    setBoxGutterY(dieGap);
     setInterlockShiftX(0);
     setInterlockShiftY(0);
 
     setMarginDetectionResult({
       success: true,
-      msg: `✨ Zero Gaps & Tight CAD Pack active! Trimmed ${halfW}${isInch ? '"' : 'mm'} sides, ${halfH}${isInch ? '"' : 'mm'} top/bottom. In-between gaps set to 0.00 (butt-cut).`
+      msg: `✨ Trimmed client artwork margins (Top ${trimmedTop}${isInch ? '"' : 'mm'}, Bottom ${trimmedBot}${isInch ? '"' : 'mm'}, Left ${trimmedLeft}${isInch ? '"' : 'mm'}, Right ${trimmedRight}${isInch ? '"' : 'mm'}). Applied 0.25 mm margin in between boxes.`
     });
   };
 
@@ -729,6 +991,7 @@ export default function ImpositionSection({
     const isInch = packagingUnit === 'inch';
     const factor = isInch ? 1 / 25.4 : 1;
     const roundFactor = isInch ? 100 : 10;
+    const dieGap = isInch ? 0.01 : 0.25;
 
     if (detectedArtBox) {
       const topVal = Math.round(detectedArtBox.topMM * factor * roundFactor) / roundFactor;
@@ -739,9 +1002,12 @@ export default function ImpositionSection({
       setTrimBottom(botVal);
       setTrimLeft(leftVal);
       setTrimRight(rightVal);
+      // After trim apply 0.25 mm margin in between the box
+      setBoxGutterX(dieGap);
+      setBoxGutterY(dieGap);
       setMarginDetectionResult({
         success: true,
-        msg: `Detected margins: Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}.`
+        msg: `Detected margins: Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}. Applied 0.25 mm margin in between boxes.`
       });
       setDetectingMargins(false);
       return;
@@ -759,9 +1025,12 @@ export default function ImpositionSection({
           setTrimBottom(botVal);
           setTrimLeft(leftVal);
           setTrimRight(rightVal);
+          // After trim apply 0.25 mm margin in between the box
+          setBoxGutterX(dieGap);
+          setBoxGutterY(dieGap);
           setMarginDetectionResult({
             success: true,
-            msg: `Detected margins: Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}.`
+            msg: `Detected margins: Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}. Applied 0.25 mm margin in between boxes.`
           });
           setDetectingMargins(false);
           return;
@@ -780,9 +1049,12 @@ export default function ImpositionSection({
       setTrimBottom(halfH);
       setTrimLeft(halfW);
       setTrimRight(halfW);
+      // After trim apply 0.25 mm margin in between the box
+      setBoxGutterX(dieGap);
+      setBoxGutterY(dieGap);
       setMarginDetectionResult({
         success: true,
-        msg: `Fitted to dieline footprint: ${flatW} × ${flatH} ${isInch ? 'inch' : 'mm'} (Trimmed ${halfH}${isInch ? '"' : 'mm'} top/bottom, ${halfW}${isInch ? '"' : 'mm'} sides).`
+        msg: `Fitted to dieline footprint: ${flatW} × ${flatH} ${isInch ? 'inch' : 'mm'} (Trimmed ${halfH}${isInch ? '"' : 'mm'} top/bottom, ${halfW}${isInch ? '"' : 'mm'} sides). Applied 0.25 mm margin in between boxes.`
       });
     } catch (err) {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -797,9 +1069,12 @@ export default function ImpositionSection({
       setTrimBottom(halfH);
       setTrimLeft(halfW);
       setTrimRight(halfW);
+      // After trim apply 0.25 mm margin in between the box
+      setBoxGutterX(dieGap);
+      setBoxGutterY(dieGap);
       setMarginDetectionResult({
         success: true,
-        msg: `Calculated from flat dieline: Trimmed ${halfH}${isInch ? '"' : 'mm'} top/bottom, ${halfW}${isInch ? '"' : 'mm'} sides.`
+        msg: `Calculated from flat dieline: Trimmed ${halfH}${isInch ? '"' : 'mm'} top/bottom, ${halfW}${isInch ? '"' : 'mm'} sides. Applied 0.25 mm margin in between boxes.`
       });
     } finally {
       setDetectingMargins(false);
@@ -810,6 +1085,28 @@ export default function ImpositionSection({
   const handleRunImposition = async () => {
     setImposing(true);
     setError(null);
+
+    // Auto-select minimum sheet size if current sheet is out of size
+    let effSheetW = parseFloat(sheetWidth);
+    let effSheetH = parseFloat(sheetHeight);
+    let effPreset = sheetPreset;
+    let effOrient = sheetOrientation;
+    let effIsCustom = sheetPreset === 'CUSTOM';
+
+    if (!minSheetNeeded.fitsCurrent) {
+      const best = minSheetNeeded.bestSheet;
+      effSheetW = best.width;
+      effSheetH = best.height;
+      effPreset = best.name;
+      effOrient = best.orientation;
+      effIsCustom = best.isCustom;
+
+      setSheetWidth(effSheetW);
+      setSheetHeight(effSheetH);
+      setSheetPreset(effPreset);
+      setSheetOrientation(effOrient);
+      setCustomSheet(effIsCustom);
+    }
 
     const isBoxMode = partMode === 'BOX';
     const isInchPackaging = isBoxMode && packagingUnit === 'inch';
@@ -824,12 +1121,12 @@ export default function ImpositionSection({
     const config = {
       productCategory: isBoxMode ? 'BOX' : 'BOOK',
       sheet: {
-        width: parseFloat(sheetWidth),
-        height: parseFloat(sheetHeight),
+        width: effSheetW,
+        height: effSheetH,
         unit: 'mm',
-        orientation: sheetOrientation,
-        preset: sheetPreset,
-        isCustom: sheetPreset === 'CUSTOM'
+        orientation: effOrient,
+        preset: effPreset,
+        isCustom: effIsCustom
       },
       bookSize: {
         width: isBoxMode ? effectiveBoxDimensions.effW : parseFloat(bookWidth),
@@ -944,6 +1241,12 @@ export default function ImpositionSection({
         printTechnology,
         isBoxJob: isBoxMode,
         dielineOverlay,
+        coverStudio: partMode === 'COVER' ? {
+          spineWidth: calculatedSpine,
+          hasFlaps,
+          flapWidth: hasFlaps ? parseFloat(flapWidth) : 0,
+          paperCaliper: parseFloat(paperCaliper)
+        } : undefined,
         unit: packagingUnit
       },
       creepCompensation: bindingStyle === 'SADDLE_STITCH' ? {
@@ -992,7 +1295,7 @@ export default function ImpositionSection({
         <div className="inline-flex p-1 rounded-xl glass-card border border-white/10 shadow-inner gap-1">
           <button
             type="button"
-            onClick={() => { setPartMode('TEXT'); setSignatureIndex(0); }}
+            onClick={() => { setPartMode('TEXT'); setSignatureIndex(0); setDielineOverlay(false); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'TEXT'
                 ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20'
                 : 'text-slate-400 hover:text-slate-200'
@@ -1003,7 +1306,7 @@ export default function ImpositionSection({
           </button>
           <button
             type="button"
-            onClick={() => { setPartMode('COVER'); setSignatureIndex(0); }}
+            onClick={() => { setPartMode('COVER'); setSignatureIndex(0); setDielineOverlay(false); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${partMode === 'COVER'
                 ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-500/20'
                 : 'text-slate-400 hover:text-slate-200'
@@ -1101,19 +1404,24 @@ export default function ImpositionSection({
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {SIGNATURE_PRESETS.map((preset) => {
                     const isSelected = selectedLayout === preset.pages;
+                    const sigMax = calculateMaxPageSizeForSignature(sheetWidth, sheetHeight, preset.pages);
                     return (
                       <button
                         key={preset.pages}
                         onClick={() => { setSelectedLayout(preset.pages); setSignatureIndex(0); }}
-                        className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all ${isSelected
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all cursor-pointer ${isSelected
                             ? 'bg-cyan-950/70 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-500/10'
                             : 'bg-[#10141D] border-[#233045] text-slate-400 hover:border-[#2B3C57] hover:text-slate-200'
                           }`}
+                        title={`${preset.name}: Max page size on current sheet is ${sigMax.pageW_in}" × ${sigMax.pageH_in}" (${sigMax.pageW_mm} × ${sigMax.pageH_mm} mm)`}
                       >
-                        <span className="text-lg font-bold font-mono">{preset.label}</span>
+                        <span className="text-base font-bold font-mono">{preset.label}</span>
                         <span className="text-[10px] text-slate-400 truncate w-full">{preset.cols}×{preset.rows} Duplex</span>
+                        <span className="text-[9px] font-mono text-emerald-400 font-semibold mt-0.5">
+                          {sigMax.pageW_in}"×{sigMax.pageH_in}"
+                        </span>
                         {preset.badge && (
-                          <span className="text-[8px] font-mono px-1 rounded bg-cyan-500/20 text-cyan-300 mt-1">
+                          <span className="text-[8px] font-mono px-1 rounded bg-cyan-500/20 text-cyan-300 mt-0.5">
                             {preset.badge}
                           </span>
                         )}
@@ -1604,12 +1912,26 @@ export default function ImpositionSection({
                   <button
                     type="button"
                     onClick={() => {
+                      const val = packagingUnit === 'inch' ? 0.01 : 0.25;
+                      handleBoxGutterXChange(val);
+                      handleBoxGutterYChange(val);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-400 transition-all cursor-pointer shadow-sm flex items-center gap-1"
+                    title="Apply 0.25 mm standard die margin between boxes"
+                  >
+                    <Sparkles className="w-3 h-3 text-emerald-300" />
+                    <span>{packagingUnit === 'inch' ? '0.01"' : '0.25 mm'} (Std Die Margin)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       handleBoxGutterXChange(0);
                       handleBoxGutterYChange(0);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/60 transition-all cursor-pointer shadow-sm"
+                    className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
                   >
-                    0.00{packagingUnit === 'inch' ? '"' : 'mm'} (Zero Gap / Butt-Cut)
+                    0.00{packagingUnit === 'inch' ? '"' : 'mm'} (Butt-Cut)
                   </button>
 
                   <button
@@ -1633,7 +1955,7 @@ export default function ImpositionSection({
                     }}
                     className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
                   >
-                    {packagingUnit === 'inch' ? '1/8" (0.125")' : '3mm Standard'}
+                    {packagingUnit === 'inch' ? '1/8"' : '3mm Standard'}
                   </button>
 
                   <button
@@ -1645,7 +1967,7 @@ export default function ImpositionSection({
                     }}
                     className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
                   >
-                    {packagingUnit === 'inch' ? '1/4" (0.250")' : '6mm Wide'}
+                    {packagingUnit === 'inch' ? '1/4"' : '6mm Wide'}
                   </button>
 
                   <button
@@ -1692,12 +2014,22 @@ export default function ImpositionSection({
                       onChange={(e) => handleBoxGutterXChange(e.target.value)}
                       className="w-full accent-cyan-400"
                     />
-                    <div className="flex items-center gap-1 pt-0.5">
+                    <div className="flex items-center gap-1 pt-0.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.01 : 0.25)}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          boxGutterX === (packagingUnit === 'inch' ? 0.01 : 0.25) ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold shadow-sm' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                        title="Standard 0.25 mm die margin"
+                      >
+                        {packagingUnit === 'inch' ? '0.01"' : '0.25mm'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleBoxGutterXChange(0)}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterX === 0 ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          boxGutterX === 0 ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
                       >
                         0.00
@@ -1719,15 +2051,6 @@ export default function ImpositionSection({
                         }`}
                       >
                         {packagingUnit === 'inch' ? '1/8"' : '3mm'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.25 : 6.0)}
-                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterX === (packagingUnit === 'inch' ? 0.25 : 6.0) ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {packagingUnit === 'inch' ? '1/4"' : '6mm'}
                       </button>
                     </div>
                   </div>
@@ -1764,9 +2087,19 @@ export default function ImpositionSection({
                     <div className="flex items-center gap-1 pt-0.5 flex-wrap">
                       <button
                         type="button"
+                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.01 : 0.25)}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          boxGutterY === (packagingUnit === 'inch' ? 0.01 : 0.25) ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold shadow-sm' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                        title="Standard 0.25 mm die margin"
+                      >
+                        {packagingUnit === 'inch' ? '0.01"' : '0.25mm'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleBoxGutterYChange(0)}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY === 0 ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          boxGutterY === 0 ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
                       >
                         0.00
@@ -2077,6 +2410,47 @@ export default function ImpositionSection({
               )}
             </div>
 
+            {/* Auto-Select Minimum Sheet Size Action */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => applyMinimumSheetSize()}
+                className={`w-full py-2.5 px-3 rounded-xl border text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer ${
+                  !minSheetNeeded.fitsCurrent
+                    ? 'bg-gradient-to-r from-amber-950/80 via-rose-950/70 to-amber-950/80 border-amber-500 text-amber-200 animate-pulse shadow-lg shadow-amber-950/50'
+                    : 'bg-emerald-950/40 hover:bg-emerald-900/40 border-emerald-500/50 text-emerald-300'
+                }`}
+                title="Automatically selects the minimum sheet size where this imposition fits cleanly"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Select Minimum Sheet Size</span>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-black/40 border border-white/10 text-[10px] text-cyan-200">
+                  {minSheetNeeded.bestSheet.name} ({minSheetNeeded.bestSheet.width} × {minSheetNeeded.bestSheet.height} mm)
+                </span>
+              </button>
+
+              {!minSheetNeeded.fitsCurrent && (
+                <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/70 text-[11px] font-mono text-amber-200 space-y-1.5 shadow-md">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Layout Out of Sheet Bounds!</span>
+                  </div>
+                  <p className="text-[10px] text-amber-300/80 leading-tight">
+                    Current sheet ({sheetWidth} × {sheetHeight} mm) is smaller than layout requirement (<strong className="text-white">{minSheetNeeded.reqW} × {minSheetNeeded.reqH} mm</strong>).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => applyMinimumSheetSize()}
+                    className="w-full py-1.5 px-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-all shadow"
+                  >
+                    <span>Click to Fit: Apply {minSheetNeeded.bestSheet.name} ({minSheetNeeded.bestSheet.width} × {minSheetNeeded.bestSheet.height} mm)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Sheet Presets Dropdown */}
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -2253,6 +2627,50 @@ export default function ImpositionSection({
                 }`}>
                 {bookPreset === 'CUSTOM' ? 'Custom Trim' : bookPreset === 'AUTO' ? 'Auto-Detect' : bookPreset}
               </span>
+            </div>
+
+            {/* Dynamic Maximum Page Size for Selected Signature on Current Sheet */}
+            <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/60 via-teal-950/40 to-cyan-950/40 border border-emerald-500/50 space-y-2 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                    Max Page Size for {selectedLayout}PP on {sheetPreset}
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/60 text-emerald-300 font-bold">
+                  {maxPageSize.standardName}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-lg font-mono font-bold text-emerald-300">
+                    {maxPageSize.pageW_in}" × {maxPageSize.pageH_in}"
+                  </span>
+                  <span className="text-xs font-mono text-slate-400 ml-2">
+                    ({maxPageSize.pageW_mm} × {maxPageSize.pageH_mm} mm)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookWidth(maxPageSize.pageW_mm);
+                    setBookHeight(maxPageSize.pageH_mm);
+                    setBookPreset('MAX_FIT');
+                    setCustomBook(false);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold font-mono text-xs transition-all cursor-pointer shadow flex items-center gap-1"
+                  title="Apply the calculated maximum page size for this signature and sheet"
+                >
+                  <Sparkles className="w-3 h-3 text-slate-950" />
+                  <span>Apply Max Size</span>
+                </button>
+              </div>
+
+              <p className="text-[10px] font-mono text-slate-400 leading-tight">
+                Includes all press allowances (2" on length, 1" on width) across {maxPageSize.cols} cols × {maxPageSize.rows} rows.
+              </p>
             </div>
 
             {/* Book Presets Dropdown */}
@@ -2982,10 +3400,22 @@ export default function ImpositionSection({
                 <input type="checkbox" checked={digitalBarcode} onChange={(e) => setDigitalBarcode(e.target.checked)} className="rounded accent-cyan-400" />
                 <span className="text-emerald-300 font-semibold">Auto-Cut Barcode</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={dielineOverlay}
+                  onChange={(e) => setDielineOverlay(e.target.checked)}
+                  className="rounded accent-rose-400"
+                />
+                <span className="flex items-center gap-1 font-semibold">
+                  <Box className="w-3.5 h-3.5 text-rose-400" />
+                  <span className={dielineOverlay ? 'text-rose-300' : 'text-slate-300'}>Key Die Lines</span>
+                </span>
+              </label>
               {partMode === 'TEXT' && (
-                <label className="flex items-center gap-2 cursor-pointer col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={collatingMarks} onChange={(e) => setCollatingMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                  <span className="text-cyan-300">Spine Collation Stairs (Kodak)</span>
+                  <span className="text-cyan-300">Spine Collation</span>
                 </label>
               )}
             </div>
@@ -3146,6 +3576,23 @@ export default function ImpositionSection({
                 <strong>Imposition Error:</strong>
                 <p className="mt-0.5 m-0 text-red-200">{error}</p>
               </div>
+            </div>
+          )}
+
+          {/* Out of size auto-fit indicator */}
+          {!minSheetNeeded.fitsCurrent && (
+            <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/50 text-[10px] font-mono text-amber-300 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Current sheet is too small. Will auto-apply minimum sheet ({minSheetNeeded.bestSheet.name} {minSheetNeeded.bestSheet.width}×{minSheetNeeded.bestSheet.height} mm) on impose.</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => applyMinimumSheetSize()}
+                className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shrink-0 cursor-pointer transition-all"
+              >
+                Apply Now
+              </button>
             </div>
           )}
 

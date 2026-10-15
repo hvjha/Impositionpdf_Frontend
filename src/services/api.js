@@ -1,6 +1,39 @@
 const API_BASE_URL = '/api';
 
 /**
+ * Robust JSON response handler that gracefully handles 502 Bad Gateway,
+ * HTML proxy errors, or server disconnects without throwing "Unexpected end of JSON input".
+ */
+async function handleResponse(response, defaultErrMsg = 'Request failed') {
+  if (!response.ok) {
+    let errMsg = `${defaultErrMsg} (${response.status} ${response.statusText || 'Error'})`;
+    try {
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const errData = await response.json();
+        if (errData?.message) errMsg = errData.message;
+      } else {
+        const text = await response.text();
+        if (text && text.length < 150 && !text.includes('<!DOCTYPE')) {
+          errMsg = `${defaultErrMsg}: ${text}`;
+        } else if (response.status === 502) {
+          errMsg = 'Backend server is temporarily unavailable or restarting (502 Bad Gateway). Please retry in a moment.';
+        }
+      }
+    } catch {
+      // Fallback to errMsg
+    }
+    throw new Error(errMsg);
+  }
+
+  try {
+    return await response.json();
+  } catch (err) {
+    throw new Error(`Failed to parse server response: ${err.message}`);
+  }
+}
+
+/**
  * Authentication: Login
  */
 export async function loginUser(username, password) {
@@ -10,11 +43,7 @@ export async function loginUser(username, password) {
     body: JSON.stringify({ username, password })
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Login failed. Please verify credentials.');
-  }
-  return data;
+  return handleResponse(response, 'Login failed. Please verify credentials.');
 }
 
 /**
@@ -27,10 +56,7 @@ export async function getCurrentUser(token) {
     }
   });
 
-  if (!response.ok) {
-    throw new Error('Session expired');
-  }
-  return response.json();
+  return handleResponse(response, 'Session expired');
 }
 
 /**
@@ -45,11 +71,7 @@ export async function uploadPdfFile(file) {
     body: formData,
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'PDF Upload failed');
-  }
-  return data;
+  return handleResponse(response, 'PDF Upload failed');
 }
 
 /**
@@ -57,11 +79,7 @@ export async function uploadPdfFile(file) {
  */
 export async function getJobHistory() {
   const response = await fetch(`${API_BASE_URL}/pdfs/history`);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Failed to fetch job history');
-  }
-  return data;
+  return handleResponse(response, 'Failed to fetch job history');
 }
 
 /**
@@ -69,11 +87,7 @@ export async function getJobHistory() {
  */
 export async function getJobDetails(jobId) {
   const response = await fetch(`${API_BASE_URL}/pdfs/job/${jobId}`);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Failed to retrieve job details');
-  }
-  return data;
+  return handleResponse(response, 'Failed to retrieve job details');
 }
 
 /**
@@ -83,11 +97,7 @@ export async function deleteJob(jobId) {
   const response = await fetch(`${API_BASE_URL}/pdfs/job/${jobId}`, {
     method: 'DELETE'
   });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Failed to delete job');
-  }
-  return data;
+  return handleResponse(response, 'Failed to delete job');
 }
 
 /**
@@ -99,11 +109,7 @@ export async function analyzePdfJob(jobId) {
     headers: { 'Content-Type': 'application/json' },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'PDF Analysis failed');
-  }
-  return data;
+  return handleResponse(response, 'PDF Analysis failed');
 }
 
 /**
@@ -115,11 +121,7 @@ export async function validatePdfJob(jobId) {
     headers: { 'Content-Type': 'application/json' },
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'PDF Validation failed');
-  }
-  return data;
+  return handleResponse(response, 'PDF Validation failed');
 }
 
 /**
@@ -132,11 +134,7 @@ export async function cropPdfJob(jobId, cropRule) {
     body: JSON.stringify({ cropRule }),
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'PDF Crop failed');
-  }
-  return data;
+  return handleResponse(response, 'PDF Crop failed');
 }
 
 /**
@@ -149,11 +147,7 @@ export async function imposePdfJob(jobId, config) {
     body: JSON.stringify(config),
   });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'PDF Imposition failed');
-  }
-  return data;
+  return handleResponse(response, 'PDF Imposition failed');
 }
 
 /**
@@ -161,11 +155,7 @@ export async function imposePdfJob(jobId, config) {
  */
 export async function detectArtworkMargins(jobId) {
   const response = await fetch(`${API_BASE_URL}/pdfs/${jobId}/detect-margins`);
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Failed to detect artwork margins');
-  }
-  return data;
+  return handleResponse(response, 'Failed to detect artwork margins');
 }
 
 /**
