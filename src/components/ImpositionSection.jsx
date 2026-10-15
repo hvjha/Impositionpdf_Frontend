@@ -512,11 +512,16 @@ export default function ImpositionSection({
   }, [analysisData?.pageCount]);
 
   // ─── Prepress Calculations ──────────────────────────────────────────────
-  const totalBookPages = parseInt(totalPages, 10) || 16;
+  const isBoxJob = partMode === 'BOX';
+  const totalBookPages = parseInt(totalPages, 10) || (isBoxJob ? 1 : 16);
   const layoutPages = selectedLayout;
-  const totalSignatures = Math.max(1, Math.ceil(totalBookPages / layoutPages));
-  const totalCapacity = totalSignatures * layoutPages;
-  const blankPaddingPages = Math.max(0, totalCapacity - totalBookPages);
+  const totalSignatures = isBoxJob
+    ? Math.max(1, totalBookPages)
+    : Math.max(1, Math.ceil(totalBookPages / layoutPages));
+  const totalCapacity = isBoxJob
+    ? totalSignatures * (boxCols * boxRows)
+    : totalSignatures * layoutPages;
+  const blankPaddingPages = isBoxJob ? 0 : Math.max(0, totalCapacity - totalBookPages);
 
   // Dynamic Spine Calculation (Formula: (Leaves) * Caliper + Hinge)
   const bookLeaves = Math.ceil(totalBookPages / 2);
@@ -3331,12 +3336,14 @@ export default function ImpositionSection({
               </button>
 
               <div className="text-center font-mono text-xs">
-                <span className="text-slate-400">Sig </span>
+                <span className="text-slate-400">{isBoxJob ? 'Sheet ' : 'Sig '}</span>
                 <strong className="text-cyan-300">
                   {signatureIndex + 1} / {totalSignatures}
                 </strong>
                 <span className="text-slate-500 text-[10px] block">
-                  Pages {signatureIndex * layoutPages + 1}–{Math.min((signatureIndex + 1) * layoutPages, totalBookPages)}
+                  {isBoxJob
+                    ? `Page ${signatureIndex + 1} (${boxCols * boxRows}-Up)`
+                    : `Pages ${signatureIndex * layoutPages + 1}–${Math.min((signatureIndex + 1) * layoutPages, totalBookPages)}`}
                 </span>
               </div>
 
@@ -3619,7 +3626,7 @@ export default function ImpositionSection({
                   {partMode === 'COVER'
                     ? 'Generate Cover Spread'
                     : partMode === 'BOX'
-                      ? `Impose ${boxMetrics.boxesPerSheet}-Up Box Sheet`
+                      ? `Impose ${boxMetrics.boxesPerSheet * totalBookPages} Boxes (${totalBookPages} Sheets × ${boxMetrics.boxesPerSheet}-Up)`
                       : `Impose ${totalSignatures} Book Signatures`}
                 </span>
                 <ArrowRight className="w-4 h-4" />

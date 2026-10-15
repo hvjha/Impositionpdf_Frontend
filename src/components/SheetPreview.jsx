@@ -767,7 +767,9 @@ export default function SheetPreview({
           h: cellH,
           rot,
           idx: row * c + col,
-          page: activeSide === 'FRONT' ? 1 : (parseInt(totalPages, 10) >= 2 ? 2 : 1)
+          page: activeSide === 'FRONT'
+            ? Math.min(parseInt(totalPages, 10) || 1, (parseInt(sheetIndex, 10) || 0) + 1)
+            : (parseInt(totalPages, 10) >= 2 ? 2 : 1)
         });
       }
     }
@@ -801,12 +803,14 @@ export default function SheetPreview({
       printableW, printableH, efficiencyPct, wastePct,
       minX, maxX, minY, maxY, layoutW_mm, layoutH_mm, isInch, dimW_text, dimH_text, sheetSizeText
     };
-  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages, partMode]);
+  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages, partMode, sheetIndex]);
 
   // ─── Total Signatures / Forms ───────────────────────────────────────────
   const layoutPagesCount = parseInt(selectedLayout, 10) || 16;
   const totalBookPages = parseInt(totalPages, 10) || 16;
-  const totalSignatures = Math.max(1, Math.ceil(totalBookPages / layoutPagesCount));
+  const totalSignatures = partMode === 'BOX'
+    ? Math.max(1, totalBookPages)
+    : Math.max(1, Math.ceil(totalBookPages / layoutPagesCount));
 
   // Resolved page cells for TEXT mode
   const textCells = useMemo(() => {
@@ -2164,12 +2168,12 @@ export default function SheetPreview({
         </svg>
       </div>
 
-      {/* ─── Signature Navigation Tabs ─────────────────────────────────── */}
-      {partMode === 'TEXT' && totalSignatures > 1 && (
+      {/* ─── Signature / Sheet Navigation Tabs ─────────────────────────────────── */}
+      {(partMode === 'TEXT' || partMode === 'BOX') && totalSignatures > 1 && (
         <div className="mt-3 flex items-center gap-1.5 overflow-x-auto pb-1">
           <span className="text-xs font-mono font-bold text-slate-400 mr-2 shrink-0 flex items-center gap-1">
             <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-            SIGNATURES ({totalSignatures}):
+            {partMode === 'BOX' ? `SHEETS (${totalSignatures}):` : `SIGNATURES (${totalSignatures}):`}
           </span>
           {Array.from({ length: totalSignatures }, (_, i) => {
             const sigStart = i * layoutPagesCount + 1;
@@ -2180,12 +2184,12 @@ export default function SheetPreview({
               <button
                 key={i}
                 onClick={() => onSheetChange?.(i)}
-                className={`px-3 py-1.5 text-xs font-mono rounded-lg border shrink-0 transition-all ${isSelected
+                className={`px-3 py-1.5 text-xs font-mono rounded-lg border shrink-0 transition-all cursor-pointer ${isSelected
                     ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300 font-bold shadow-sm'
                     : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-slate-200 hover:bg-[#1A2436]'
                   }`}
               >
-                Sig {i + 1} ({sigStart}–{sigEnd})
+                {partMode === 'BOX' ? `Sheet ${i + 1} (Page ${i + 1})` : `Sig ${i + 1} (${sigStart}–${sigEnd})`}
               </button>
             );
           })}
