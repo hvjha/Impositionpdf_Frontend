@@ -569,13 +569,15 @@ export default function SheetPreview({
     flatHeight: 176,
     interlockMode: 'INTERLOCKING',
     dielineOverlay: true
-  }
+  },
+  keylineElements = []
 }) {
   const [activeSide, setActiveSide] = useState('FRONT');
   const [showMargins, setShowMargins] = useState(true);
   const [showGutters, setShowGutters] = useState(true);
   const [showBleed, setShowBleed] = useState(true);
   const [showArtwork, setShowArtwork] = useState(true);
+  const [showCustomKeylines, setShowCustomKeylines] = useState(true);
 
   const isDuplex = workStyle !== 'SIMPLEX' && workStyle !== 'SINGLE_SIDED';
 
@@ -934,12 +936,15 @@ export default function SheetPreview({
             { label: 'Margins', state: showMargins, set: setShowMargins },
             { label: 'Gutters', state: showGutters, set: setShowGutters },
             { label: 'Bleed', state: showBleed, set: setShowBleed },
+            ...(keylineElements && keylineElements.length > 0
+              ? [{ label: `Keylines (${keylineElements.length})`, state: showCustomKeylines, set: setShowCustomKeylines, isKeyline: true }]
+              : [])
           ].map((t) => (
             <button
               key={t.label}
               onClick={() => t.set(!t.state)}
-              className={`px-2 py-1 text-[9px] font-mono rounded border transition-all ${t.state
-                  ? 'bg-[#1A2436] border-cyan-800/50 text-cyan-400'
+              className={`px-2 py-1 text-[9px] font-mono rounded border transition-all cursor-pointer ${t.state
+                  ? (t.isKeyline ? 'bg-fuchsia-950/80 border-fuchsia-500 text-fuchsia-300 font-bold' : 'bg-[#1A2436] border-cyan-800/50 text-cyan-400')
                   : 'bg-[#10141D] border-[#233045] text-slate-500'
                 }`}
             >
@@ -2146,6 +2151,75 @@ export default function SheetPreview({
               >
                 ⚠️ OUT OF SIZE: LAYOUT EXCEEDS PRESS SHEET
               </text>
+            </g>
+          )}
+
+          {/* ─── Custom Drawn Keylines Vector Overlay ───────────────────────── */}
+          {showCustomKeylines && keylineElements && keylineElements.length > 0 && (
+            <g transform={`translate(${pad}, ${pad})`} className="custom-keyline-overlay pointer-events-none">
+              {keylineElements.map((el) => {
+                if (el.type === 'rect') {
+                  return (
+                    <rect
+                      key={el.id}
+                      x={el.x}
+                      y={el.y}
+                      width={el.width}
+                      height={el.height}
+                      fill={el.fillColor || 'none'}
+                      fillOpacity={el.fillOpacity ?? 0.25}
+                      stroke={el.strokeColor || '#E6007A'}
+                      strokeWidth={el.strokeWidth || 1}
+                      strokeDasharray={el.strokeDash || undefined}
+                    />
+                  );
+                }
+                if (el.type === 'circle') {
+                  return (
+                    <circle
+                      key={el.id}
+                      cx={el.cx}
+                      cy={el.cy}
+                      r={el.r}
+                      fill={el.fillColor || 'none'}
+                      fillOpacity={el.fillOpacity ?? 0.25}
+                      stroke={el.strokeColor || '#E6007A'}
+                      strokeWidth={el.strokeWidth || 1}
+                      strokeDasharray={el.strokeDash || undefined}
+                    />
+                  );
+                }
+                if (el.type === 'line') {
+                  return (
+                    <line
+                      key={el.id}
+                      x1={el.x1}
+                      y1={el.y1}
+                      x2={el.x2}
+                      y2={el.y2}
+                      stroke={el.strokeColor || '#E6007A'}
+                      strokeWidth={el.strokeWidth || 1}
+                      strokeDasharray={el.strokeDash || undefined}
+                    />
+                  );
+                }
+                if (el.type === 'text') {
+                  return (
+                    <text
+                      key={el.id}
+                      x={el.x}
+                      y={el.y}
+                      fill={el.color || el.strokeColor || '#E6007A'}
+                      fontSize={el.fontSize || 12}
+                      fontWeight={el.fontWeight || 'bold'}
+                      fontFamily="monospace"
+                    >
+                      {el.text}
+                    </text>
+                  );
+                }
+                return null;
+              })}
             </g>
           )}
 

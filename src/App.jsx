@@ -14,6 +14,7 @@ const ImpositionSection = lazy(() => import('./components/ImpositionSection'));
 const PdfCanvasViewer = lazy(() => import('./components/PdfCanvasViewer'));
 const LoginView = lazy(() => import('./components/LoginView'));
 const HistoryModal = lazy(() => import('./components/HistoryModal'));
+const KeylineStudioSection = lazy(() => import('./components/KeylineStudioSection'));
 
 // Premium Skeleton Fallback Loader
 function PrepressSuspenseFallback({ label = "Loading workflow module..." }) {
@@ -47,6 +48,10 @@ export default function App() {
 
   // ─── Dual History Modal State ───────────────────────────────────────────
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // ─── Independent Keyline Drawing Studio State ───────────────────────────
+  const [isKeylineStudioOpen, setIsKeylineStudioOpen] = useState(false);
+  const [customKeylines, setCustomKeylines] = useState([]);
 
   // ─── Active Job State ───────────────────────────────────────────────────
   const [activeJob, setActiveJob] = useState(null);
@@ -241,6 +246,8 @@ export default function App() {
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onLogout={handleLogout}
+        onOpenKeylineStudio={() => setIsKeylineStudioOpen((prev) => !prev)}
+        isKeylineStudioOpen={isKeylineStudioOpen}
       />
 
       {/* 3-Column Layout Body */}
@@ -250,80 +257,117 @@ export default function App() {
         <aside className={`app-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
           <WorkflowSteps
             currentStep={currentStep}
-            setStep={setCurrentStep}
+            setStep={(s) => {
+              setIsKeylineStudioOpen(false);
+              setCurrentStep(s);
+            }}
             maxAllowedStep={maxAllowedStep}
             isCollapsed={sidebarCollapsed}
+            onOpenKeylineStudio={() => setIsKeylineStudioOpen((prev) => !prev)}
+            isKeylineStudioOpen={isKeylineStudioOpen}
           />
         </aside>
 
         {/* CENTER: Main Content Viewport */}
         <main className="app-main">
           <Suspense fallback={<PrepressSuspenseFallback label="Initializing prepress module..." />}>
-            {currentStep === 1 && (
-              <UploadSection
-                onUploadSuccess={handleUploadSuccess}
-                onOpenHistory={() => setIsHistoryOpen(true)}
-              />
-            )}
-
-            {currentStep === 2 && activeJob && (
-              <AnalysisSection
-                jobId={activeJob.jobId}
-                analysisData={analysisData}
-                onAnalysisSuccess={handleAnalysisSuccess}
-                onProceedToValidation={() => {
-                  setMaxAllowedStep((prev) => (prev < 3 ? 3 : prev));
-                  setCurrentStep(3);
-                }}
-              />
-            )}
-
-            {currentStep === 3 && activeJob && (
-              <ValidationSection
-                jobId={activeJob.jobId}
-                validationData={validationData}
-                onValidationSuccess={handleValidationSuccess}
-                onProceedToCrop={() => {
-                  setMaxAllowedStep((prev) => (prev < 4 ? 4 : prev));
-                  setCurrentStep(4);
-                }}
-                onProceedToImposition={() => {
-                  setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
-                  setCurrentStep(5);
-                }}
-              />
-            )}
-
-            {currentStep === 4 && activeJob && (
-              <CropSection
-                jobId={activeJob.jobId}
-                analysisData={analysisData}
-                onCropSuccess={handleCropSuccess}
-                onProceedToImposition={() => {
-                  setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
-                  setCurrentStep(5);
-                }}
-              />
-            )}
-
-            {currentStep === 5 && activeJob && (
-              <ImpositionSection
-                jobId={activeJob.jobId}
-                analysisData={analysisData}
+            {isKeylineStudioOpen ? (
+              <KeylineStudioSection
+                onClose={() => setIsKeylineStudioOpen(false)}
+                initialKeylines={customKeylines}
+                activeJob={activeJob}
                 uploadedFile={uploadedFile}
-                activeJob={activeJob}
-                onImpositionSuccess={handleImpositionSuccess}
-                onProceedToOutput={() => setCurrentStep(6)}
-              />
-            )}
+                onSendToImposition={(data) => {
+                  setCustomKeylines(data.keylineElements);
+                  setIsKeylineStudioOpen(false);
 
-            {currentStep === 6 && activeJob && (
-              <PdfCanvasViewer
-                jobId={activeJob.jobId}
-                outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
-                activeJob={activeJob}
-                onReset={handleReset}
+                  // If no activeJob exists, create a standalone job reference for imposition
+                  if (!activeJob) {
+                    setActiveJob({
+                      jobId: `cad_${Date.now()}`,
+                      originalFileName: `Keyline_CAD_Dieline_${data.sheetWidth}x${data.sheetHeight}mm`,
+                      fileSize: 1024,
+                      status: 'KEYLINE_READY'
+                    });
+                  }
+
+                  setMaxAllowedStep((prev) => Math.max(prev, 5));
+                  setCurrentStep(5);
+                  addLog('SUCCESS', `Dieline transferred: ${data.keylineElements.length} keyline objects configured for Imposition sheet (${data.sheetWidth}×${data.sheetHeight}mm)`);
+                }}
               />
+            ) : (
+              <>
+                {currentStep === 1 && (
+                  <UploadSection
+                    onUploadSuccess={handleUploadSuccess}
+                    onOpenHistory={() => setIsHistoryOpen(true)}
+                    onOpenKeylineStudio={() => setIsKeylineStudioOpen(true)}
+                  />
+                )}
+
+                {currentStep === 2 && activeJob && (
+                  <AnalysisSection
+                    jobId={activeJob.jobId}
+                    analysisData={analysisData}
+                    onAnalysisSuccess={handleAnalysisSuccess}
+                    onProceedToValidation={() => {
+                      setMaxAllowedStep((prev) => (prev < 3 ? 3 : prev));
+                      setCurrentStep(3);
+                    }}
+                  />
+                )}
+
+                {currentStep === 3 && activeJob && (
+                  <ValidationSection
+                    jobId={activeJob.jobId}
+                    validationData={validationData}
+                    onValidationSuccess={handleValidationSuccess}
+                    onProceedToCrop={() => {
+                      setMaxAllowedStep((prev) => (prev < 4 ? 4 : prev));
+                      setCurrentStep(4);
+                    }}
+                    onProceedToImposition={() => {
+                      setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+                      setCurrentStep(5);
+                    }}
+                  />
+                )}
+
+                {currentStep === 4 && activeJob && (
+                  <CropSection
+                    jobId={activeJob.jobId}
+                    analysisData={analysisData}
+                    onCropSuccess={handleCropSuccess}
+                    onProceedToImposition={() => {
+                      setMaxAllowedStep((prev) => (prev < 5 ? 5 : prev));
+                      setCurrentStep(5);
+                    }}
+                  />
+                )}
+
+                {currentStep === 5 && activeJob && (
+                  <ImpositionSection
+                    jobId={activeJob.jobId}
+                    analysisData={analysisData}
+                    uploadedFile={uploadedFile}
+                    activeJob={activeJob}
+                    onImpositionSuccess={handleImpositionSuccess}
+                    onProceedToOutput={() => setCurrentStep(6)}
+                    customKeylines={customKeylines}
+                    onOpenKeylineStudio={() => setIsKeylineStudioOpen(true)}
+                  />
+                )}
+
+                {currentStep === 6 && activeJob && (
+                  <PdfCanvasViewer
+                    jobId={activeJob.jobId}
+                    outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
+                    activeJob={activeJob}
+                    onReset={handleReset}
+                  />
+                )}
+              </>
             )}
           </Suspense>
         </main>

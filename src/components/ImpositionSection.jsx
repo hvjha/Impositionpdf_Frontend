@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Grid,
   Layers,
@@ -32,7 +32,8 @@ import {
   Package,
   Box,
   Zap,
-  Ruler
+  Ruler,
+  Upload
 } from 'lucide-react';
 import { imposePdfJob, getSourcePdfUrl, getOutputPdfUrl, detectArtworkMargins } from '../services/api';
 import usePdfThumbnails from '../hooks/usePdfThumbnails';
@@ -278,7 +279,9 @@ export default function ImpositionSection({
   uploadedFile,
   activeJob,
   onImpositionSuccess,
-  onProceedToOutput
+  onProceedToOutput,
+  customKeylines = [],
+  onOpenKeylineStudio
 }) {
   const activeOutputFileId = activeJob?.outputFileId;
   const pdfSource = useMemo(() => {
@@ -503,6 +506,93 @@ export default function ImpositionSection({
   const [imposing, setImposing] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+
+  // Imported custom keylines (if sent from standalone Keyline Studio or uploaded locally)
+  const [localKeylines, setLocalKeylines] = useState(customKeylines || []);
+
+  useEffect(() => {
+    if (customKeylines && customKeylines.length > 0) {
+      setLocalKeylines(customKeylines);
+    }
+  }, [customKeylines]);
+
+  const keylineElements = localKeylines;
+  const impositionKeylineFileRef = useRef(null);
+
+  const handleUploadKeylineFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = ev.target.result;
+        if (file.name.endsWith('.json') || file.type.includes('json')) {
+          const parsed = JSON.parse(text);
+          const elements = Array.isArray(parsed) ? parsed : (parsed.elements || []);
+          if (elements.length > 0) {
+            setLocalKeylines(elements);
+          }
+        } else if (file.name.endsWith('.svg') || file.type.includes('svg') || text.includes('<svg')) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(text, 'image/svg+xml');
+          const imported = [];
+          doc.querySelectorAll('rect').forEach((r, idx) => {
+            imported.push({
+              id: `imp_rect_${Date.now()}_${idx}`,
+              type: 'rect',
+              lineType: 'cut',
+              x: parseFloat(r.getAttribute('x')) || 0,
+              y: parseFloat(r.getAttribute('y')) || 0,
+              width: parseFloat(r.getAttribute('width')) || 100,
+              height: parseFloat(r.getAttribute('height')) || 100,
+              strokeColor: r.getAttribute('stroke') || '#E6007A',
+              strokeWidth: parseFloat(r.getAttribute('stroke-width')) || 1,
+              strokeDash: r.getAttribute('stroke-dasharray') || '',
+              fillColor: r.getAttribute('fill') || 'none',
+              fillOpacity: parseFloat(r.getAttribute('fill-opacity')) || 0,
+              label: `Box ${idx + 1}`
+            });
+          });
+          doc.querySelectorAll('line').forEach((l, idx) => {
+            imported.push({
+              id: `imp_line_${Date.now()}_${idx}`,
+              type: 'line',
+              lineType: 'crease',
+              x1: parseFloat(l.getAttribute('x1')) || 0,
+              y1: parseFloat(l.getAttribute('y1')) || 0,
+              x2: parseFloat(l.getAttribute('x2')) || 100,
+              y2: parseFloat(l.getAttribute('y2')) || 100,
+              strokeColor: l.getAttribute('stroke') || '#009EE3',
+              strokeWidth: parseFloat(l.getAttribute('stroke-width')) || 1,
+              strokeDash: l.getAttribute('stroke-dasharray') || '',
+              label: `Line ${idx + 1}`
+            });
+          });
+          doc.querySelectorAll('circle').forEach((c, idx) => {
+            imported.push({
+              id: `imp_circle_${Date.now()}_${idx}`,
+              type: 'circle',
+              lineType: 'perf',
+              cx: parseFloat(c.getAttribute('cx')) || 0,
+              cy: parseFloat(c.getAttribute('cy')) || 0,
+              r: parseFloat(c.getAttribute('r')) || 10,
+              strokeColor: c.getAttribute('stroke') || '#00A651',
+              strokeWidth: parseFloat(c.getAttribute('stroke-width')) || 1,
+              strokeDash: c.getAttribute('stroke-dasharray') || '',
+              label: `Circle ${idx + 1}`
+            });
+          });
+          if (imported.length > 0) {
+            setLocalKeylines(imported);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to parse keylines in ImpositionSection:", err);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   // Sync with analysisData
   useEffect(() => {
@@ -1245,7 +1335,7 @@ export default function ImpositionSection({
         digitalBarcode: isBoxMode ? false : digitalBarcode,
         printTechnology,
         isBoxJob: isBoxMode,
-        dielineOverlay,
+        dielineOverlay: partMode === 'KEYLINE' ? true : dielineOverlay,
         coverStudio: partMode === 'COVER' ? {
           spineWidth: calculatedSpine,
           hasFlaps,
@@ -1254,6 +1344,7 @@ export default function ImpositionSection({
         } : undefined,
         unit: packagingUnit
       },
+      keylines: keylineElements,
       creepCompensation: bindingStyle === 'SADDLE_STITCH' ? {
         enabled: true,
         amountMm: creepMM
@@ -3252,6 +3343,7 @@ export default function ImpositionSection({
               bookWidth={parseFloat(bookWidth)}
               bookHeight={parseFloat(bookHeight)}
               bookPreset={bookPreset}
+              keylineElements={keylineElements}
               coverParams={{
                 spineWidth: calculatedSpine,
                 flapWidth,
@@ -3573,6 +3665,43 @@ export default function ImpositionSection({
                 <strong className="text-emerald-400">{boxMetrics.efficiencyPct}%</strong>
               </div>
             )}
+            {keylineElements && keylineElements.length > 0 && (
+              <div className="flex items-center justify-between text-slate-400 pt-1 border-t border-white/5">
+                <span>Keyline Die Overlay:</span>
+                <strong className="text-fuchsia-400">{keylineElements.length} Objects Loaded</strong>
+              </div>
+            )}
+
+            {/* Quick Access: Upload Dieline or Open Keyline Studio */}
+            <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+              <input
+                type="file"
+                ref={impositionKeylineFileRef}
+                onChange={handleUploadKeylineFile}
+                accept=".json,.svg,application/json,image/svg+xml"
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => impositionKeylineFileRef.current?.click()}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                title="Upload Keyline CAD file (.json or .svg) to overlay on press sheet"
+              >
+                <Upload className="w-3 h-3 text-emerald-400" />
+                <span>Upload Dieline</span>
+              </button>
+              {onOpenKeylineStudio && (
+                <button
+                  type="button"
+                  onClick={onOpenKeylineStudio}
+                  className="flex-1 py-1.5 px-2 rounded-lg bg-fuchsia-950/40 hover:bg-fuchsia-900/60 text-fuchsia-300 hover:text-fuchsia-100 border border-fuchsia-700/50 text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  title="Open Independent Keyline Drawing Studio to draw or edit keylines"
+                >
+                  <Scissors className="w-3 h-3 text-fuchsia-400" />
+                  <span>{keylineElements.length > 0 ? 'Edit in Studio' : 'Draw Keylines'}</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* ─── Error Display ────────────────────────────────────────────── */}

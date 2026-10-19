@@ -7,7 +7,8 @@ import {
   Grid, 
   Download,
   Settings,
-  ChevronRight
+  ChevronRight,
+  Scissors
 } from 'lucide-react';
 
 const STEPS = [
@@ -19,7 +20,14 @@ const STEPS = [
   { id: 6, title: 'Production PDF', icon: Download, desc: 'High-Res Output' },
 ];
 
-export default function WorkflowSteps({ currentStep, setStep, maxAllowedStep, isCollapsed = false }) {
+export default function WorkflowSteps({ 
+  currentStep, 
+  setStep, 
+  maxAllowedStep, 
+  isCollapsed = false,
+  onOpenKeylineStudio,
+  isKeylineStudioOpen = false
+}) {
   return (
     <nav className="sidebar-nav flex flex-col h-full">
       {/* Navigation Items */}
@@ -86,8 +94,56 @@ export default function WorkflowSteps({ currentStep, setStep, maxAllowedStep, is
         })}
       </div>
 
+      {/* Independent Designer Tool: Keyline & Dieline Drawing Studio */}
+      {onOpenKeylineStudio && (
+        <div className="px-2 pt-2 pb-1 border-t border-white/[0.06]">
+          <button
+            type="button"
+            onClick={onOpenKeylineStudio}
+            className={`sidebar-nav-item group flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all duration-200 text-left cursor-pointer ${
+              isKeylineStudioOpen
+                ? 'bg-fuchsia-950/60 border border-fuchsia-500/50 shadow-lg shadow-fuchsia-500/20'
+                : 'hover:bg-white/[0.04]'
+            }`}
+            title="Design CAD cutting dies, creases, and perforation keylines independently"
+          >
+            <div
+              className={`sidebar-nav-icon w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200 ${
+                isKeylineStudioOpen
+                  ? 'bg-gradient-to-br from-fuchsia-500 to-pink-600 text-white shadow-lg shadow-fuchsia-500/30'
+                  : 'bg-fuchsia-950/40 text-fuchsia-400 border border-fuchsia-700/40 group-hover:bg-fuchsia-900/50'
+              }`}
+            >
+              <Scissors className="w-4 h-4" />
+            </div>
+
+            {!isCollapsed && (
+              <div className="flex flex-col min-w-0 overflow-hidden">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold font-mono text-fuchsia-400">CAD</span>
+                  <span
+                    className={`text-xs font-bold truncate ${
+                      isKeylineStudioOpen ? 'text-fuchsia-200' : 'text-slate-300 group-hover:text-fuchsia-200'
+                    }`}
+                  >
+                    Keyline Studio
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium truncate">
+                  Draw & Save Dieline
+                </span>
+              </div>
+            )}
+
+            {!isCollapsed && isKeylineStudioOpen && (
+              <ChevronRight className="w-3.5 h-3.5 text-fuchsia-400 ml-auto shrink-0" />
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Settings at bottom */}
-      <div className="px-2 pb-3 border-t border-white/[0.06] pt-3 mt-auto">
+      <div className="px-2 pb-3 border-t border-white/[0.06] pt-2 mt-auto">
         <button
           className="sidebar-nav-item flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all duration-200 text-left cursor-pointer hover:bg-white/[0.04]"
           title="Settings"

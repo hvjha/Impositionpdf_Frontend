@@ -8,11 +8,12 @@ import {
   ShieldCheck,
   Zap,
   HardDrive,
-  FolderArchive
+  FolderArchive,
+  Scissors
 } from 'lucide-react';
 import { uploadPdfFile } from '../services/api';
 
-export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
+export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKeylineStudio }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -193,6 +194,36 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory }) {
           </button>
         )}
       </div>
+
+      {/* Standalone Keyline Designer Callout */}
+      {onOpenKeylineStudio && (
+        <div className="mt-8 p-4 rounded-2xl bg-gradient-to-r from-fuchsia-950/40 via-purple-950/30 to-slate-900 border border-fuchsia-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-left shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fuchsia-500 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-fuchsia-500/30 shrink-0">
+              <Scissors className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white m-0 flex items-center gap-2">
+                Need to Design a Keyline / Dieline First?
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-fuchsia-900/60 text-fuchsia-300 border border-fuchsia-600/40">
+                  Independent CAD Canvas
+                </span>
+              </h3>
+              <p className="text-xs text-slate-300 m-0 mt-0.5">
+                Draw cut & crease rules, add text labels, choose spot colors & fills, drag & resize shapes, and download vector SVG/JSON CAD—or optionally impose when ready.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenKeylineStudio}
+            className="px-4 py-2.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-xs font-mono transition-all shadow-md shadow-fuchsia-600/30 flex items-center gap-2 shrink-0 cursor-pointer"
+          >
+            <span>Open Keyline Studio</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Feature Highlights */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">

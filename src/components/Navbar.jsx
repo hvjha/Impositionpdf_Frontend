@@ -5,7 +5,8 @@ import {
   User,
   LogOut,
   Zap,
-  FileText
+  FileText,
+  Scissors
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -14,7 +15,9 @@ export default function Navbar({
   user,
   onReset,
   onOpenHistory,
-  onLogout 
+  onLogout,
+  onOpenKeylineStudio,
+  isKeylineStudioOpen
 }) {
   return (
     <header className="app-header">
@@ -70,6 +73,17 @@ export default function Navbar({
 
         {/* Right Actions */}
         <div className="header-actions">
+          {/* Independent Keyline / Dieline Drawing Studio */}
+          <button
+            type="button"
+            onClick={onOpenKeylineStudio}
+            className={`header-btn ${isKeylineStudioOpen ? 'border-fuchsia-500/80 bg-fuchsia-950/60 text-fuchsia-300 ring-1 ring-fuchsia-500/40' : 'hover:border-fuchsia-500/40 text-slate-300 hover:text-fuchsia-300'}`}
+            title="Open Independent Keyline & Dieline Drawing Studio"
+          >
+            <Scissors className="w-3.5 h-3.5 text-fuchsia-400" />
+            <span className="hidden sm:inline">Keyline Studio</span>
+          </button>
+
           <button onClick={onOpenHistory} className="header-btn" title="Archives & History">
             <FolderArchive className="w-3.5 h-3.5 text-purple-400" />
             <span className="hidden sm:inline">Archives</span>
