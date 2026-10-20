@@ -60,6 +60,7 @@ const SHEET_PRESETS = [
   { name: 'A4', label: 'A4 (210 × 297 mm) • Digital Short-Run', width: 210, height: 297, tech: 'DIGITAL' },
   { name: 'B2', label: 'B2 (500 × 707 mm) • Half-Size Offset', width: 500, height: 707, tech: 'OFFSET' },
   { name: '20×26"', label: '20 × 26 in (508 × 660 mm) • Offset Short', width: 508, height: 660, tech: 'OFFSET' },
+  { name: '20×30"', label: '20 × 30 in (508 × 762 mm) • Packaging Press', width: 508, height: 762, tech: 'OFFSET' },
   { name: '23×36"', label: '23 × 36 in (584 × 914 mm) • Offset 8-up', width: 584, height: 914, tech: 'OFFSET' },
   { name: '25×38"', label: '25 × 38 in (635 × 965 mm) • Offset Book', width: 635, height: 965, tech: 'OFFSET' },
   { name: '28×40"', label: '28 × 40 in (711 × 1016 mm) • Full-Size Offset', width: 711, height: 1016, tech: 'OFFSET' },
@@ -329,7 +330,7 @@ export default function ImpositionSection({
   const [boxRows, setBoxRows] = useState(2);
   const [interlockMode, setInterlockMode] = useState('INTERLOCKING'); // 'INTERLOCKING' | 'STANDARD' | 'HEAD_TO_HEAD'
   const [dielineOverlay, setDielineOverlay] = useState(false); // Key Die Lines default to false for Book Text & Cover
-  const [removeWhiteSpace, setRemoveWhiteSpace] = useState(true); // Auto-crop white space around box
+  const [removeWhiteSpace, setRemoveWhiteSpace] = useState(true); // Default true for Box mode so blank spaces are automatically trimmed!
   const [interlockShiftX, setInterlockShiftX] = useState(0); // Shift for interlocking alignment
   const [interlockShiftY, setInterlockShiftY] = useState(0);
   const [orderQuantity, setOrderQuantity] = useState(1000);
@@ -375,10 +376,10 @@ export default function ImpositionSection({
     return 279.4;
   }, [analysisData]);
 
-  // Detected ArtBox / TrimBox from source PDF analysis
+  // Detected ArtBox / TrimBox / ContentBox from source PDF analysis
   const detectedArtBox = useMemo(() => {
-    const art = analysisData?.pages?.[0]?.boxes?.art;
     const media = analysisData?.pages?.[0]?.boxes?.media || { width: 1152, height: 792, x: 0, y: 0 };
+    const art = analysisData?.pages?.[0]?.boxes?.art;
     if (art && (art.width < media.width - 2 || art.height < media.height - 2)) {
       return {
         x: art.x,
@@ -390,13 +391,85 @@ export default function ImpositionSection({
         rightMM: Math.max(0, Math.round(((media.width - (art.x - (media.x || 0) + art.width)) * 25.4 / 72) * 10) / 10),
         topMM: Math.max(0, Math.round(((media.height - (art.y - (media.y || 0) + art.height)) * 25.4 / 72) * 10) / 10),
         widthMM: Math.max(0, Math.round((art.width * 25.4 / 72) * 10) / 10),
-        heightMM: Math.max(0, Math.round((art.height * 25.4 / 72) * 10) / 10)
+        heightMM: Math.max(0, Math.round((art.height * 25.4 / 72) * 10) / 10),
+        source: 'ArtBox'
       };
     }
+
+    const trim = analysisData?.pages?.[0]?.boxes?.trim;
+    if (trim && (trim.width < media.width - 2 || trim.height < media.height - 2)) {
+      return {
+        x: trim.x,
+        y: trim.y,
+        width: trim.width,
+        height: trim.height,
+        leftMM: Math.max(0, Math.round(((trim.x - (media.x || 0)) * 25.4 / 72) * 10) / 10),
+        bottomMM: Math.max(0, Math.round(((trim.y - (media.y || 0)) * 25.4 / 72) * 10) / 10),
+        rightMM: Math.max(0, Math.round(((media.width - (trim.x - (media.x || 0) + trim.width)) * 25.4 / 72) * 10) / 10),
+        topMM: Math.max(0, Math.round(((media.height - (trim.y - (media.y || 0) + trim.height)) * 25.4 / 72) * 10) / 10),
+        widthMM: Math.max(0, Math.round((trim.width * 25.4 / 72) * 10) / 10),
+        heightMM: Math.max(0, Math.round((trim.height * 25.4 / 72) * 10) / 10),
+        source: 'TrimBox'
+      };
+    }
+
+    const content = analysisData?.pages?.[0]?.boxes?.content || analysisData?.pages?.[0]?.contentBox;
+    if (content && (content.leftMM > 0 || content.bottomMM > 0 || content.rightMM > 0 || content.topMM > 0)) {
+      return {
+        x: content.x,
+        y: content.y,
+        width: content.width,
+        height: content.height,
+        leftMM: content.leftMM,
+        bottomMM: content.bottomMM,
+        rightMM: content.rightMM,
+        topMM: content.topMM,
+        widthMM: content.widthMM,
+        heightMM: content.heightMM,
+        dielineOnly: content.dielineOnly || null,
+        headerHeightMM: content.headerHeightMM || content.dielineOnly?.headerHeightMM || 20.0,
+        source: 'ContentBox'
+      };
+    }
+
     return null;
   }, [analysisData]);
 
+  const [trimHeader, setTrimHeader] = useState(true); // Default true for Box mode so repeating title headers are trimmed off!
+  const [headerTrimHeight, setHeaderTrimHeight] = useState(0.75); // in packagingUnit (0.75 in or 20 mm)
   const [bookPreset, setBookPreset] = useState('AUTO');
+
+  // Auto-sync headerTrimHeight from detected content if headerHeightMM is available
+  useEffect(() => {
+    if (detectedArtBox?.headerHeightMM) {
+      const isInch = packagingUnit === 'inch';
+      setHeaderTrimHeight(isInch ? Math.round((detectedArtBox.headerHeightMM / 25.4) * 100) / 100 : Math.round(detectedArtBox.headerHeightMM * 10) / 10);
+    }
+  }, [detectedArtBox, packagingUnit]);
+
+  // Auto-sync box trimming and header removal when detectedArtBox arrives
+  useEffect(() => {
+    if (partMode === 'BOX' && detectedArtBox) {
+      if (detectedArtBox.dielineOnly) {
+        setTrimHeader(true);
+      }
+      if (trimTop === 0 && trimBottom === 0 && trimLeft === 0 && trimRight === 0) {
+        const isInch = packagingUnit === 'inch';
+        const factor = isInch ? 1 / 25.4 : 1;
+        const roundFactor = isInch ? 100 : 10;
+        const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
+        setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
+        setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
+        setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
+        let topVal = target.topMM;
+        if (trimHeader && !detectedArtBox.dielineOnly) {
+          topVal += (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
+        }
+        setTrimTop(Math.round(topVal * factor * roundFactor) / roundFactor);
+      }
+    }
+  }, [partMode, detectedArtBox, packagingUnit]);
+
   const [bookWidth, setBookWidth] = useState(148);
   const [bookHeight, setBookHeight] = useState(210);
   const [customBook, setCustomBook] = useState(false);
@@ -654,8 +727,10 @@ export default function ImpositionSection({
       flatW = 2 * L + 2 * W + glue;
       flatH = H + 0.5 * W + tuck + (isInch ? 0.35 : 10);
     } else {
-      flatW = isInch ? (sourcePdfPageWidthMM / 25.4) : (sourcePdfPageWidthMM || (L + W));
-      flatH = isInch ? (sourcePdfPageHeightMM / 25.4) : (sourcePdfPageHeightMM || H);
+      const fallbackW = (detectedArtBox?.widthMM) || sourcePdfPageWidthMM || (L + W);
+      const fallbackH = (trimHeader && detectedArtBox?.dielineOnly ? detectedArtBox.dielineOnly.heightMM : detectedArtBox?.heightMM) || sourcePdfPageHeightMM || H;
+      flatW = isInch ? (fallbackW / 25.4) : fallbackW;
+      flatH = isInch ? (fallbackH / 25.4) : fallbackH;
     }
 
     const roundFactor = isInch ? 100 : 10;
@@ -664,7 +739,7 @@ export default function ImpositionSection({
       flatH: Math.round(flatH * roundFactor) / roundFactor,
       unit: packagingUnit
     };
-  }, [boxStyle, boxLength, boxWidth, boxHeight, glueTabWidth, tuckFlapHeight, sourcePdfPageWidthMM, sourcePdfPageHeightMM, packagingUnit]);
+  }, [boxStyle, boxLength, boxWidth, boxHeight, glueTabWidth, tuckFlapHeight, sourcePdfPageWidthMM, sourcePdfPageHeightMM, packagingUnit, detectedArtBox, trimHeader]);
 
   // Effective Box Artwork Dimensions after Margin Trimming
   const effectiveBoxDimensions = useMemo(() => {
@@ -681,9 +756,14 @@ export default function ImpositionSection({
     if (hasManualTrim) {
       effW = Math.max(20, Math.round((srcW - tLeft - tRight) * 10) / 10);
       effH = Math.max(20, Math.round((srcH - tTop - tBottom) * 10) / 10);
-    } else if (detectedArtBox) {
-      effW = detectedArtBox.widthMM;
-      effH = detectedArtBox.heightMM;
+    } else if (removeWhiteSpace && detectedArtBox) {
+      const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
+      let hMM = target.heightMM;
+      if (trimHeader && !detectedArtBox.dielineOnly) {
+        hMM = Math.max(20, hMM - (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1));
+      }
+      effW = Math.max(20, Math.round(target.widthMM * 10) / 10);
+      effH = Math.max(20, Math.round(hMM * 10) / 10);
     } else {
       effW = Math.round((isInch ? boxFlatDimensions.flatW * 25.4 : boxFlatDimensions.flatW) * 10) / 10;
       effH = Math.round((isInch ? boxFlatDimensions.flatH * 25.4 : boxFlatDimensions.flatH) * 10) / 10;
@@ -691,22 +771,7 @@ export default function ImpositionSection({
     const savedH = Math.round((tTop + tBottom) * 10) / 10;
     const savedW = Math.round((tLeft + tRight) * 10) / 10;
     return { effW, effH, savedH, savedW, srcW, srcH };
-  }, [sourcePdfPageWidthMM, sourcePdfPageHeightMM, trimTop, trimBottom, trimLeft, trimRight, packagingUnit, detectedArtBox, boxFlatDimensions]);
-
-  // Auto-sync trim margins from detected ArtBox when first loaded in BOX mode & apply 0.25 mm margin in between boxes
-  useEffect(() => {
-    if (partMode === 'BOX' && detectedArtBox && trimTop === 0 && trimBottom === 0 && trimLeft === 0 && trimRight === 0) {
-      const isInch = packagingUnit === 'inch';
-      const factor = isInch ? 1 / 25.4 : 1;
-      const roundFactor = isInch ? 100 : 10;
-      setTrimTop(Math.round(detectedArtBox.topMM * factor * roundFactor) / roundFactor);
-      setTrimBottom(Math.round(detectedArtBox.bottomMM * factor * roundFactor) / roundFactor);
-      setTrimLeft(Math.round(detectedArtBox.leftMM * factor * roundFactor) / roundFactor);
-      setTrimRight(Math.round(detectedArtBox.rightMM * factor * roundFactor) / roundFactor);
-      setBoxGutterX(isInch ? 0.01 : 0.25);
-      setBoxGutterY(isInch ? 0.01 : 0.25);
-    }
-  }, [partMode, detectedArtBox, packagingUnit, trimTop, trimBottom, trimLeft, trimRight]);
+  }, [sourcePdfPageWidthMM, sourcePdfPageHeightMM, trimTop, trimBottom, trimLeft, trimRight, packagingUnit, boxFlatDimensions, removeWhiteSpace, detectedArtBox, trimHeader, headerTrimHeight]);
 
   // Box Packaging Press Sheet Metrics
   const boxMetrics = useMemo(() => {
@@ -783,8 +848,9 @@ export default function ImpositionSection({
       const isInch = packagingUnit === 'inch';
       const gx = isInch ? (parseFloat(boxGutterX) || 0) * 25.4 : (parseFloat(boxGutterX) || 0);
       const gy = isInch ? (parseFloat(boxGutterY) || 0) * 25.4 : (parseFloat(boxGutterY) || 0);
-      const boxW = effectiveBoxDimensions.effW;
-      const boxH = effectiveBoxDimensions.effH;
+      const isRotated = (parseInt(pageRotation, 10) || 0) === 90 || (parseInt(pageRotation, 10) || 0) === 270;
+      const boxW = isRotated ? effectiveBoxDimensions.effH : effectiveBoxDimensions.effW;
+      const boxH = isRotated ? effectiveBoxDimensions.effW : effectiveBoxDimensions.effH;
 
       const layoutW = c * boxW + (c - 1) * gx;
       const layoutH = r * boxH + (r - 1) * gy;
@@ -839,7 +905,8 @@ export default function ImpositionSection({
     marginBottom,
     sheetWidth,
     sheetHeight,
-    sheetOrientation
+    sheetOrientation,
+    pageRotation
   ]);
 
   // Handler to select and apply the minimum sheet size where imposition is possible
@@ -1037,19 +1104,63 @@ export default function ImpositionSection({
     if (trimLinked) setTrimLeft(v);
   };
 
-  const handleTightenCadPack = () => {
+  const handleApplyQuarterInchSheetMargins = () => {
+    const qMargin = 6.35; // 0.25 inch in mm
+    setMarginTop(qMargin);
+    setMarginBottom(qMargin);
+    setMarginLeft(qMargin);
+    setMarginRight(qMargin);
+    setMarginDetectionResult({
+      success: true,
+      msg: `📐 Applied 0.25" (6.35 mm) sheet margins to all 4 sides (Top, Bottom, Left, Right).`
+    });
+  };
+
+  const handleTightenCadPack = async () => {
+    setDetectingMargins(true);
+    setMarginDetectionResult(null);
+    setRemoveWhiteSpace(true);
     const isInch = packagingUnit === 'inch';
     const roundFactor = isInch ? 100 : 10;
     const factor = isInch ? 1 / 25.4 : 1;
-    const dieGap = isInch ? 0.01 : 0.25;
+
+    let targetBox = detectedArtBox;
+
+    if (!targetBox && jobId) {
+      try {
+        const res = await detectArtworkMargins(jobId);
+        if (res.success && res.detected && res.margins) {
+          targetBox = res.margins;
+          if (res.dielineMargins) {
+            targetBox.dielineOnly = res.dielineMargins;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to detect margins in tighten CAD:", err);
+      }
+    }
 
     let trimmedTop = 0, trimmedBot = 0, trimmedLeft = 0, trimmedRight = 0;
 
-    if (detectedArtBox) {
-      trimmedTop = Math.round(detectedArtBox.topMM * factor * roundFactor) / roundFactor;
-      trimmedBot = Math.round(detectedArtBox.bottomMM * factor * roundFactor) / roundFactor;
-      trimmedLeft = Math.round(detectedArtBox.leftMM * factor * roundFactor) / roundFactor;
-      trimmedRight = Math.round(detectedArtBox.rightMM * factor * roundFactor) / roundFactor;
+    if (targetBox) {
+      // Bottom, left, right strictly match detected artwork footprint (bottom flaps preserved 100%)
+      trimmedBot = Math.round(targetBox.bottomMM * factor * roundFactor) / roundFactor;
+      trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
+      trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
+
+      // Top trim: if trimHeader is ON, trim to dielineOnly or add headerTrimHeight for images
+      if (trimHeader) {
+        if (targetBox.dielineOnly) {
+          // Vector keylines with detected top gap (e.g. Pluvya)
+          trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
+        } else {
+          // Images and raster artwork without vector gap: add header trim height
+          const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
+          trimmedTop = Math.round((targetBox.topMM + hMM) * factor * roundFactor) / roundFactor;
+        }
+      } else {
+        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
+      }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
       const srcH = isInch ? (sourcePdfPageHeightMM / 25.4) : sourcePdfPageHeightMM;
@@ -1068,19 +1179,87 @@ export default function ImpositionSection({
     setTrimTop(trimmedTop);
     setTrimBottom(trimmedBot);
 
-    // After trim apply 0.25 mm margin in between the box
-    setBoxGutterX(dieGap);
-    setBoxGutterY(dieGap);
+    // Set zero gap between individual box ups
+    setBoxGutterX(0);
+    setBoxGutterY(0);
     setInterlockShiftX(0);
     setInterlockShiftY(0);
 
+    // Apply 0.25" (6.35 mm) sheet margins all around
+    const qMargin = 6.35;
+    setMarginTop(qMargin);
+    setMarginBottom(qMargin);
+    setMarginLeft(qMargin);
+    setMarginRight(qMargin);
+
+    const effW = Math.max(1, Math.round((sourcePdfPageWidthMM - (trimmedLeft + trimmedRight) * (isInch ? 25.4 : 1)) * 10) / 10);
+    const effH = Math.max(1, Math.round((sourcePdfPageHeightMM - (trimmedTop + trimmedBot) * (isInch ? 25.4 : 1)) * 10) / 10);
+    const effWDisp = isInch ? `${(effW / 25.4).toFixed(2)}"` : `${effW} mm`;
+    const effHDisp = isInch ? `${(effH / 25.4).toFixed(2)}"` : `${effH} mm`;
+
     setMarginDetectionResult({
       success: true,
-      msg: `✨ Trimmed client artwork margins (Top ${trimmedTop}${isInch ? '"' : 'mm'}, Bottom ${trimmedBot}${isInch ? '"' : 'mm'}, Left ${trimmedLeft}${isInch ? '"' : 'mm'}, Right ${trimmedRight}${isInch ? '"' : 'mm'}). Applied 0.25 mm margin in between boxes.`
+      msg: `✨ Zero Gaps & Tight CAD Pack Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Set zero box gap & 0.25" sheet margins all around.`
     });
+    setDetectingMargins(false);
   };
 
-  const handleAutoDetectMargins = async () => {
+  const handleToggleTrimHeader = () => {
+    const next = !trimHeader;
+    setTrimHeader(next);
+    const isInch = packagingUnit === 'inch';
+    const factor = isInch ? 1 / 25.4 : 1;
+    const roundFactor = isInch ? 100 : 10;
+    const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
+    const hVal = Math.round(hMM * factor * roundFactor) / roundFactor;
+
+    const targetBox = detectedArtBox;
+
+    if (targetBox) {
+      if (targetBox.dielineOnly) {
+        // Vector keylines with detected top gap (e.g. Pluvya)
+        const src = next ? targetBox.dielineOnly : targetBox;
+        setTrimTop(Math.round(src.topMM * factor * roundFactor) / roundFactor);
+        setTrimBottom(Math.round(src.bottomMM * factor * roundFactor) / roundFactor);
+        setTrimLeft(Math.round(src.leftMM * factor * roundFactor) / roundFactor);
+        setTrimRight(Math.round(src.rightMM * factor * roundFactor) / roundFactor);
+      } else {
+        // Works for images, raster artwork, ArtBox, or any box without a separate vector gap
+        if (next) {
+          const baseTopMM = trimTop > 0 ? (trimTop * (isInch ? 25.4 : 1)) : targetBox.topMM;
+          const newTopMM = baseTopMM + hMM;
+          setTrimTop(Math.round(newTopMM * factor * roundFactor) / roundFactor);
+          if (trimLeft === 0 && trimBottom === 0) {
+            setTrimBottom(Math.round(targetBox.bottomMM * factor * roundFactor) / roundFactor);
+            setTrimLeft(Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor);
+            setTrimRight(Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor);
+          }
+        } else {
+          const curTopMM = (parseFloat(trimTop) || 0) * (isInch ? 25.4 : 1);
+          const revertedTopMM = Math.max(targetBox.topMM, curTopMM - hMM);
+          setTrimTop(Math.round(revertedTopMM * factor * roundFactor) / roundFactor);
+        }
+      }
+    } else {
+      if (next) {
+        setTrimTop(prev => Math.round((prev + hVal) * roundFactor) / roundFactor);
+      } else {
+        setTrimTop(prev => Math.max(0, Math.round((prev - hVal) * roundFactor) / roundFactor));
+      }
+    }
+  };
+
+  const handleHeaderTrimHeightChange = (val) => {
+    const num = parseFloat(val) || 0;
+    const oldVal = parseFloat(headerTrimHeight) || 0;
+    const diff = num - oldVal;
+    setHeaderTrimHeight(num);
+    if (trimHeader) {
+      setTrimTop(prev => Math.max(0, Math.round((prev + diff) * 100) / 100));
+    }
+  };
+
+  const handleAutoDetectMargins = async (forceDielineOnly = false) => {
     setDetectingMargins(true);
     setMarginDetectionResult(null);
     const isInch = packagingUnit === 'inch';
@@ -1088,50 +1267,49 @@ export default function ImpositionSection({
     const roundFactor = isInch ? 100 : 10;
     const dieGap = isInch ? 0.01 : 0.25;
 
-    if (detectedArtBox) {
-      const topVal = Math.round(detectedArtBox.topMM * factor * roundFactor) / roundFactor;
-      const botVal = Math.round(detectedArtBox.bottomMM * factor * roundFactor) / roundFactor;
-      const leftVal = Math.round(detectedArtBox.leftMM * factor * roundFactor) / roundFactor;
-      const rightVal = Math.round(detectedArtBox.rightMM * factor * roundFactor) / roundFactor;
+    let targetBox = detectedArtBox;
+
+    if ((!targetBox || (!targetBox.dielineOnly && (forceDielineOnly || trimHeader))) && jobId) {
+      try {
+        const res = await detectArtworkMargins(jobId);
+        if (res.success && res.detected && res.margins) {
+          targetBox = res.margins;
+          if (res.dielineMargins) {
+            targetBox.dielineOnly = res.dielineMargins;
+          }
+        }
+      } catch (err) {
+        console.error("Auto detect margins error:", err);
+      }
+    }
+
+    if (targetBox) {
+      const activeSource = ((forceDielineOnly || trimHeader) && targetBox.dielineOnly) ? targetBox.dielineOnly : targetBox;
+      const topVal = Math.round(activeSource.topMM * factor * roundFactor) / roundFactor;
+      const botVal = Math.round(activeSource.bottomMM * factor * roundFactor) / roundFactor;
+      const leftVal = Math.round(activeSource.leftMM * factor * roundFactor) / roundFactor;
+      const rightVal = Math.round(activeSource.rightMM * factor * roundFactor) / roundFactor;
       setTrimTop(topVal);
       setTrimBottom(botVal);
       setTrimLeft(leftVal);
       setTrimRight(rightVal);
-      // After trim apply 0.25 mm margin in between the box
       setBoxGutterX(dieGap);
       setBoxGutterY(dieGap);
+
+      const effW = Math.max(1, Math.round((sourcePdfPageWidthMM - (leftVal + rightVal) * (isInch ? 25.4 : 1)) * 10) / 10);
+      const effH = Math.max(1, Math.round((sourcePdfPageHeightMM - (topVal + botVal) * (isInch ? 25.4 : 1)) * 10) / 10);
+      const effWDisp = isInch ? `${(effW / 25.4).toFixed(2)}"` : `${effW} mm`;
+      const effHDisp = isInch ? `${(effH / 25.4).toFixed(2)}"` : `${effH} mm`;
+
       setMarginDetectionResult({
         success: true,
-        msg: `Detected margins: Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}. Applied 0.25 mm margin in between boxes.`
+        msg: `Detected artwork footprint: ${effWDisp} × ${effHDisp} (Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}). Applied 0.25 mm margin between boxes.`
       });
       setDetectingMargins(false);
       return;
     }
 
     try {
-      if (jobId) {
-        const res = await detectArtworkMargins(jobId);
-        if (res.success && res.detected && res.margins) {
-          const topVal = Math.round(res.margins.topMM * factor * roundFactor) / roundFactor;
-          const botVal = Math.round(res.margins.bottomMM * factor * roundFactor) / roundFactor;
-          const leftVal = Math.round(res.margins.leftMM * factor * roundFactor) / roundFactor;
-          const rightVal = Math.round(res.margins.rightMM * factor * roundFactor) / roundFactor;
-          setTrimTop(topVal);
-          setTrimBottom(botVal);
-          setTrimLeft(leftVal);
-          setTrimRight(rightVal);
-          // After trim apply 0.25 mm margin in between the box
-          setBoxGutterX(dieGap);
-          setBoxGutterY(dieGap);
-          setMarginDetectionResult({
-            success: true,
-            msg: `Detected margins: Top ${topVal}${isInch ? '"' : 'mm'}, Bottom ${botVal}${isInch ? '"' : 'mm'}, Left ${leftVal}${isInch ? '"' : 'mm'}, Right ${rightVal}${isInch ? '"' : 'mm'}. Applied 0.25 mm margin in between boxes.`
-          });
-          setDetectingMargins(false);
-          return;
-        }
-      }
-      // Fallback calculation based on source page vs dieline flat size
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
       const srcH = isInch ? (sourcePdfPageHeightMM / 25.4) : sourcePdfPageHeightMM;
       const flatW = boxFlatDimensions.flatW;
@@ -1144,7 +1322,6 @@ export default function ImpositionSection({
       setTrimBottom(halfH);
       setTrimLeft(halfW);
       setTrimRight(halfW);
-      // After trim apply 0.25 mm margin in between the box
       setBoxGutterX(dieGap);
       setBoxGutterY(dieGap);
       setMarginDetectionResult({
@@ -1152,25 +1329,7 @@ export default function ImpositionSection({
         msg: `Fitted to dieline footprint: ${flatW} × ${flatH} ${isInch ? 'inch' : 'mm'} (Trimmed ${halfH}${isInch ? '"' : 'mm'} top/bottom, ${halfW}${isInch ? '"' : 'mm'} sides). Applied 0.25 mm margin in between boxes.`
       });
     } catch (err) {
-      const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
-      const srcH = isInch ? (sourcePdfPageHeightMM / 25.4) : sourcePdfPageHeightMM;
-      const flatW = boxFlatDimensions.flatW;
-      const flatH = boxFlatDimensions.flatH;
-      const diffW = Math.max(0, srcW - flatW);
-      const diffH = Math.max(0, srcH - flatH);
-      const halfW = Math.round((diffW / 2) * roundFactor) / roundFactor;
-      const halfH = Math.round((diffH / 2) * roundFactor) / roundFactor;
-      setTrimTop(halfH);
-      setTrimBottom(halfH);
-      setTrimLeft(halfW);
-      setTrimRight(halfW);
-      // After trim apply 0.25 mm margin in between the box
-      setBoxGutterX(dieGap);
-      setBoxGutterY(dieGap);
-      setMarginDetectionResult({
-        success: true,
-        msg: `Calculated from flat dieline: Trimmed ${halfH}${isInch ? '"' : 'mm'} top/bottom, ${halfW}${isInch ? '"' : 'mm'} sides. Applied 0.25 mm margin in between boxes.`
-      });
+      console.error(err);
     } finally {
       setDetectingMargins(false);
     }
@@ -1268,7 +1427,10 @@ export default function ImpositionSection({
         },
         interlockMode,
         dielineOverlay,
+        tightCadPack: Boolean(removeWhiteSpace || (parseFloat(trimTop) > 0 || parseFloat(trimBottom) > 0 || parseFloat(trimLeft) > 0 || parseFloat(trimRight) > 0)),
         removeWhiteSpace,
+        trimHeader,
+        headerHeightMM: (parseFloat(headerTrimHeight) || (packagingUnit === 'inch' ? 0.75 : 20.0)) * (packagingUnit === 'inch' ? 25.4 : 1),
         interlockShiftX: parseFloat(interlockShiftX) || 0,
         interlockShiftY: parseFloat(interlockShiftY) || 0,
         gutterX: gxMM,
@@ -1746,35 +1908,82 @@ export default function ImpositionSection({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPackagingUnit('inch');
-                    setBoxStyle('RTE');
-                    setBoxLength(4.09);
-                    setBoxWidth(1.57);
-                    setBoxHeight(4.72);
-                    setGlueTabWidth(0.52);
-                    setTuckFlapHeight(1.5);
-                    setBoxCols(2);
-                    setBoxRows(2);
-                    setInterlockMode('INTERLOCKING');
-                    setDielineOverlay(true);
-                    setSheetPreset('18×25"');
-                    setSheetWidth(635);
-                    setSheetHeight(457.2);
-                    setSheetOrientation('LANDSCAPE');
-                    setCropMarks(false);
-                    setColorBars(false);
-                    setCameraMarks(false);
-                    setFoldMarks(false);
-                    setDigitalBarcode(false);
-                  }}
-                  className="w-full py-1.5 px-2.5 rounded-xl bg-gradient-to-r from-emerald-600/30 to-cyan-600/30 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 hover:text-white text-[11px] font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
-                >
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Acuzie 100ml Carton (4-Up on 18×25")</span>
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPackagingUnit('inch');
+                      setBoxStyle('RTE');
+                      setBoxLength(4.09);
+                      setBoxWidth(1.57);
+                      setBoxHeight(4.72);
+                      setGlueTabWidth(0.52);
+                      setTuckFlapHeight(1.5);
+                      setBoxCols(2);
+                      setBoxRows(2);
+                      setInterlockMode('INTERLOCKING');
+                      setDielineOverlay(true);
+                      setSheetPreset('18×25"');
+                      setSheetWidth(635);
+                      setSheetHeight(457.2);
+                      setSheetOrientation('LANDSCAPE');
+                      setCropMarks(false);
+                      setColorBars(false);
+                      setCameraMarks(false);
+                      setFoldMarks(false);
+                      setDigitalBarcode(false);
+                      // Apply 0.25" (6.35 mm) sheet margins
+                      const qMargin = 6.35;
+                      setMarginTop(qMargin);
+                      setMarginBottom(qMargin);
+                      setMarginLeft(qMargin);
+                      setMarginRight(qMargin);
+                    }}
+                    className="w-full py-1.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600/30 to-cyan-600/30 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 hover:text-white text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Acuzie (4-Up 18×25")</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPackagingUnit('inch');
+                      setBoxStyle('RTE');
+                      setBoxLength(4.26);
+                      setBoxWidth(2.56);
+                      setBoxHeight(5.12);
+                      setGlueTabWidth(0.59);
+                      setTuckFlapHeight(1.18);
+                      setBoxCols(2);
+                      setBoxRows(2);
+                      setInterlockMode('STANDARD');
+                      setDielineOverlay(true);
+                      setSheetPreset('20×30"');
+                      setSheetWidth(508);
+                      setSheetHeight(762);
+                      setSheetOrientation('PORTRAIT');
+                      setCropMarks(false);
+                      setColorBars(false);
+                      setCameraMarks(false);
+                      setFoldMarks(false);
+                      setDigitalBarcode(false);
+                      setBoxGutterX(0);
+                      setBoxGutterY(0);
+                      // Apply 0.25" (6.35 mm) sheet margins
+                      const qMargin = 6.35;
+                      setMarginTop(qMargin);
+                      setMarginBottom(qMargin);
+                      setMarginLeft(qMargin);
+                      setMarginRight(qMargin);
+                      handleTightenCadPack();
+                    }}
+                    className="w-full py-1.5 px-2 rounded-xl bg-gradient-to-r from-blue-600/30 to-indigo-600/30 border border-blue-500/50 hover:border-blue-400 text-blue-300 hover:text-white text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span>Pluvya (4-Up 20×30")</span>
+                  </button>
+                </div>
               </div>
 
               {/* 3D Box Dimensions (L x W x H) */}
@@ -1973,6 +2182,133 @@ export default function ImpositionSection({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* ─── Packaging Press Sheet & 0.25" Margins (Quick Stock Selection) ─── */}
+              <div className="p-3.5 rounded-xl bg-[#0D131F] border border-cyan-500/40 space-y-3 shadow-lg shadow-cyan-950/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Printer className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                      Press Sheet Stock & 0.25" Margins
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 font-semibold">
+                    {sheetWidth} × {sheetHeight} mm ({(sheetWidth / 25.4).toFixed(1)}" × {(sheetHeight / 25.4).toFixed(1)}")
+                  </span>
+                </div>
+
+                <p className="text-[10px] font-mono text-slate-400 leading-tight">
+                  Select your press sheet stock (e.g. 20×30", 20×26", 23×36") and apply standard 0.25" sheet margins on all 4 sides.
+                </p>
+
+                {/* Quick Packaging Sheet Presets */}
+                <div className="space-y-1.5">
+                  <span className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">Quick Sheet Presets:</span>
+                  <div className="grid grid-cols-3 gap-1.5 font-mono text-[10px]">
+                    {[
+                      { name: '20×30"', label: '20 × 30"', desc: '508 × 762 mm', w: 508, h: 762, badge: 'Popular' },
+                      { name: '20×26"', label: '20 × 26"', desc: '508 × 660 mm', w: 508, h: 660 },
+                      { name: '23×36"', label: '23 × 36"', desc: '584 × 914 mm', w: 584, h: 914 },
+                      { name: '18×25"', label: '18 × 25"', desc: '457 × 635 mm', w: 635, h: 457.2 },
+                      { name: '28×40"', label: '28 × 40"', desc: '711 × 1016 mm', w: 711, h: 1016 },
+                      { name: '30×40"', label: '30 × 40"', desc: '762 × 1016 mm', w: 762, h: 1016 },
+                    ].map((sz) => {
+                      const isSelected = sheetPreset === sz.name;
+                      return (
+                        <button
+                          key={sz.name}
+                          type="button"
+                          onClick={() => {
+                            const p = SHEET_PRESETS.find(x => x.name === sz.name) || sz;
+                            handleSelectSheetPreset(p);
+                          }}
+                          className={`p-1.5 rounded-lg border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-gradient-to-r from-cyan-950 to-blue-950 border-cyan-400 text-white font-bold shadow-md shadow-cyan-950/60'
+                              : 'bg-[#141C2A] border-[#233045] text-slate-300 hover:text-white hover:border-slate-500'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold">{sz.label}</span>
+                            {sz.badge && (
+                              <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                {sz.badge}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[8px] text-slate-400">{sz.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Sheet Selector Dropdown & Orientation & Margins Action */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-0.5">All Sheet Sizes</label>
+                    <select
+                      value={sheetPreset}
+                      onChange={(e) => {
+                        const p = SHEET_PRESETS.find(x => x.name === e.target.value);
+                        if (p) handleSelectSheetPreset(p);
+                      }}
+                      className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
+                    >
+                      {SHEET_PRESETS.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-0.5">Sheet Feed Orientation</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSheetOrientation('PORTRAIT')}
+                        className={`py-1 px-2 rounded-lg border text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          sheetOrientation === 'PORTRAIT'
+                            ? 'bg-cyan-950 border-cyan-500 text-cyan-200 font-bold'
+                            : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>↕ Portrait</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSheetOrientation('LANDSCAPE')}
+                        className={`py-1 px-2 rounded-lg border text-[11px] font-mono font-medium flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                          sheetOrientation === 'LANDSCAPE'
+                            ? 'bg-cyan-950 border-cyan-500 text-cyan-200 font-bold'
+                            : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>↔ Landscape</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Apply 0.25" Margin All Button & Status */}
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#141C2A] border border-[#233045]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono text-slate-300">
+                      Sheet Margins: <strong className="text-cyan-300">{marginTop === 6.35 && marginBottom === 6.35 && marginLeft === 6.35 && marginRight === 6.35 ? '0.25" All (6.35 mm)' : `${marginTop}T / ${marginBottom}B / ${marginLeft}L / ${marginRight}R mm`}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyQuarterInchSheetMargins}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/60 text-emerald-300 font-mono text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm"
+                    title="Apply 0.25 inch (6.35 mm) margin to all 4 sides"
+                  >
+                    <span>📐 Apply 0.25" Margin All</span>
+                  </button>
+                </div>
               </div>
 
               {/* ─── In-Between Box Gap & Spacing (Horizontal & Vertical Whitespace Trimming) ─── */}
@@ -2277,7 +2613,7 @@ export default function ImpositionSection({
                 </div>
 
                 <p className="text-[10px] font-mono text-slate-400 leading-tight">
-                  Trim excessive blank margins in client artwork to recover wasted press sheet space and fit multiple rows/columns.
+                  Trim all white spaces except the content (e.g. in a 20×30 sheet, extract only the single 9×11 object and trim the rest), set zero box gap, and apply 0.25" sheet margins all around.
                 </p>
 
                 {/* Quick Presets Bar */}
@@ -2285,21 +2621,60 @@ export default function ImpositionSection({
                   <button
                     type="button"
                     onClick={handleTightenCadPack}
-                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-mono text-[10px] font-bold flex items-center gap-1 shadow-md shadow-emerald-950/50 transition-all cursor-pointer"
-                    title="Automatically removes all blank client margins and sets gaps to zero"
+                    disabled={detectingMargins}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-mono text-[11px] font-bold flex items-center gap-1.5 shadow-md shadow-emerald-950/50 transition-all cursor-pointer disabled:opacity-50"
+                    title="Automatically removes all blank margins, takes single 1-up object content, applies 0.25 inch sheet margin, and sets zero gap"
                   >
-                    <Sparkles className="w-3 h-3 text-emerald-200" />
-                    <span>✨ Zero Gaps & Tight CAD Pack</span>
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>{detectingMargins ? 'Tightening...' : '✨ Zero Gaps & Tight CAD Pack'}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={handleAutoDetectMargins}
+                    onClick={handleApplyQuarterInchSheetMargins}
+                    className="px-2.5 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 font-mono text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                    title="Apply 0.25 inch (6.35 mm) margin to all 4 sides of the press sheet"
+                  >
+                    <span>📐 0.25" Sheet Margin All</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleTrimHeader}
+                    className={`px-2.5 py-1.5 rounded-lg font-mono text-[10px] font-bold flex items-center gap-1 border transition-all cursor-pointer ${
+                      trimHeader
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                        : 'bg-[#141C2A] text-amber-300 border-amber-500/50 hover:bg-amber-950/40'
+                    }`}
+                    title="Trim off top title block, KLD text, or slug line (works for both vector key lines and image artwork)"
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span>{trimHeader ? '✓ Title Header Trimmed' : 'Trim Title Header (Keylines & Images)'}</span>
+                  </button>
+
+                  {trimHeader && (
+                    <div className="flex items-center gap-1 bg-[#141C2A] border border-amber-500/40 rounded-lg px-2 py-1 text-[10px] font-mono text-amber-300 shadow-sm">
+                      <span className="text-[9px] text-slate-400">Header H:</span>
+                      <input
+                        type="number"
+                        step={packagingUnit === 'inch' ? 0.05 : 1}
+                        min="0"
+                        value={headerTrimHeight}
+                        onChange={(e) => handleHeaderTrimHeightChange(e.target.value)}
+                        className="w-12 bg-[#10141D] border border-amber-500/50 rounded px-1 py-0.2 text-[10px] font-mono text-white text-right"
+                      />
+                      <span className="text-[9px] text-slate-400">{packagingUnit === 'inch' ? '"' : 'mm'}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleAutoDetectMargins(false)}
                     disabled={detectingMargins}
                     className="px-2.5 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-cyan-300 font-mono text-[10px] font-semibold border border-cyan-800/60 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
                   >
                     <Scissors className="w-3 h-3 text-cyan-400" />
-                    <span>{detectingMargins ? 'Detecting...' : 'Fit to Dieline Footprint'}</span>
+                    <span>{detectingMargins ? 'Detecting...' : 'Fit Content Only'}</span>
                   </button>
 
                   <button
@@ -3114,6 +3489,14 @@ export default function ImpositionSection({
               <span className="text-[9px] font-mono text-slate-500">Quick Margins:</span>
               <button
                 type="button"
+                onClick={handleApplyQuarterInchSheetMargins}
+                className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 font-bold border border-emerald-500/60 shadow-sm"
+                title="Apply 0.25 inch (6.35 mm) margin to all 4 sides"
+              >
+                0.25" All (6.35mm)
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setMarginTop(10);
                   setMarginBottom(10);
@@ -3369,6 +3752,10 @@ export default function ImpositionSection({
                 trimBottom: parseFloat(trimBottom) || 0,
                 trimLeft: parseFloat(trimLeft) || 0,
                 trimRight: parseFloat(trimRight) || 0,
+                trimTopMM: (parseFloat(trimTop) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
+                trimBottomMM: (parseFloat(trimBottom) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
+                trimLeftMM: (parseFloat(trimLeft) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
+                trimRightMM: (parseFloat(trimRight) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
                 gutterX: partMode === 'BOX' ? (packagingUnit === 'inch' ? (parseFloat(boxGutterX) || 0) * 25.4 : (parseFloat(boxGutterX) || 0)) : gutterX,
                 gutterY: partMode === 'BOX' ? (packagingUnit === 'inch' ? (parseFloat(boxGutterY) || 0) * 25.4 : (parseFloat(boxGutterY) || 0)) : gutterY,
                 interlockMode,

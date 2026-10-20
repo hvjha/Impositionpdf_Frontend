@@ -731,9 +731,13 @@ export default function SheetPreview({
     const effBoxH_mm = parseFloat(boxParams?.effectiveBoxHeight) || 
       (isInch ? (parseFloat(boxParams?.flatHeight) || 9.37) * 25.4 : (parseFloat(boxParams?.flatHeight) || 238));
 
+    const isRot = (parseInt(pageRotation, 10) || 0) === 90 || (parseInt(pageRotation, 10) || 0) === 270;
+    const effW = isRot ? effBoxH_mm : effBoxW_mm;
+    const effH = isRot ? effBoxW_mm : effBoxH_mm;
+
     // When in box mode, use exact box footprint rather than artificially stretching cells
-    const cellW = isBox ? effBoxW_mm : Math.max(10, (printableW - gx * (c - 1)) / c);
-    const cellH = isBox ? effBoxH_mm : Math.max(10, (printableH - gy * (r - 1)) / r);
+    const cellW = isBox ? effW : Math.max(10, (printableW - gx * (c - 1)) / c);
+    const cellH = isBox ? effH : Math.max(10, (printableH - gy * (r - 1)) / r);
 
     // Center the complete box grid within printable area
     const layoutW_calc = c * cellW + (c - 1) * gx;
@@ -1587,10 +1591,12 @@ export default function SheetPreview({
                     {hasArtwork && (() => {
                       const srcW = parseFloat(boxParams?.sourcePdfWidth) || cell.w;
                       const srcH = parseFloat(boxParams?.sourcePdfHeight) || cell.h;
-                      const tLeft = Math.max(0, parseFloat(boxParams?.trimLeft) || 0);
-                      const tRight = Math.max(0, parseFloat(boxParams?.trimRight) || 0);
-                      const tTop = Math.max(0, parseFloat(boxParams?.trimTop) || 0);
-                      const tBottom = Math.max(0, parseFloat(boxParams?.trimBottom) || 0);
+                      const isInchUnit = boxParams?.unit === 'inch';
+                      const unitFactor = isInchUnit ? 25.4 : 1;
+                      const tLeft = boxParams?.trimLeftMM != null ? parseFloat(boxParams.trimLeftMM) : (parseFloat(boxParams?.trimLeft) || 0) * unitFactor;
+                      const tRight = boxParams?.trimRightMM != null ? parseFloat(boxParams.trimRightMM) : (parseFloat(boxParams?.trimRight) || 0) * unitFactor;
+                      const tTop = boxParams?.trimTopMM != null ? parseFloat(boxParams.trimTopMM) : (parseFloat(boxParams?.trimTop) || 0) * unitFactor;
+                      const tBottom = boxParams?.trimBottomMM != null ? parseFloat(boxParams.trimBottomMM) : (parseFloat(boxParams?.trimBottom) || 0) * unitFactor;
                       const isTrimmed = tLeft > 0 || tRight > 0 || tTop > 0 || tBottom > 0;
 
                       if (!isTrimmed) {
