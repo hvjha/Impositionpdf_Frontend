@@ -60,6 +60,9 @@ export default function App() {
   const [validationData, setValidationData] = useState(null);
   const [cropData, setCropData] = useState(null);
   const [impositionData, setImpositionData] = useState(null);
+  const [latestOutputFileId, setLatestOutputFileId] = useState(null);
+  const [initialProductType, setInitialProductType] = useState('BOX');
+  const [initialSheetConfig, setInitialSheetConfig] = useState(null);
 
   // ─── Sidebar collapse state ─────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -99,12 +102,29 @@ export default function App() {
   }, [addLog]);
 
   // Step Handlers with useCallback optimization
-  const handleUploadSuccess = useCallback((job, file) => {
+  const handleUploadSuccess = useCallback((job, file, setupOptions = null) => {
     setActiveJob(job);
     setUploadedFile(file);
+    if (setupOptions?.analysisData) {
+      setAnalysisData(setupOptions.analysisData);
+    }
+    if (setupOptions?.productType) {
+      setInitialProductType(setupOptions.productType);
+    }
+    if (setupOptions?.sheetConfig) {
+      setInitialSheetConfig(setupOptions.sheetConfig);
+    }
     addLog('SUCCESS', `PDF Uploaded: ${file.name} (Job ID: #${job.jobId}) stored in GridFS`);
-    setMaxAllowedStep(2);
-    setCurrentStep(2);
+
+    if (setupOptions?.skipToImposition && setupOptions?.sheetConfig) {
+      setMaxAllowedStep(5);
+      setCurrentStep(5);
+      addLog('SUCCESS', `Fast-Track: Set ${setupOptions.productType} on ${setupOptions.sheetConfig.name} (${setupOptions.sheetConfig.ups} UPS)`);
+    } else {
+      setMaxAllowedStep(setupOptions?.sheetConfig ? 5 : 2);
+      setCurrentStep(2);
+      addLog('SUCCESS', `Workflow Initialized: ${setupOptions?.productType || 'Box'} configured on ${setupOptions?.sheetConfig?.name || 'Press Sheet'}. Step 02 (Analysis) started.`);
+    }
   }, [addLog]);
 
   const handleAnalysisSuccess = useCallback((analysis) => {
@@ -131,6 +151,7 @@ export default function App() {
   const handleImpositionSuccess = useCallback((res) => {
     setImpositionData(res);
     if (res.outputFileId) {
+      setLatestOutputFileId(res.outputFileId);
       setActiveJob((prev) => ({ ...prev, outputFileId: res.outputFileId, status: 'COMPLETED' }));
     }
     addLog('SUCCESS', `N-Up Imposition sheet generated (Output File ID: #${res.outputFileId?.slice(-6)})`);
@@ -147,6 +168,7 @@ export default function App() {
     setValidationData(null);
     setCropData(null);
     setImpositionData(null);
+    setLatestOutputFileId(null);
     addLog('INFO', 'Reset workspace. Prepared for new PDF job.');
   }, [addLog]);
 
@@ -177,6 +199,9 @@ export default function App() {
     setImpositionData(job.productionConfig?.imposition || null);
 
     addLog('SUCCESS', `Loaded archived job #${job.jobId.slice(-6).toUpperCase()}: ${job.originalFileName}`);
+    if (job.outputFileId) {
+      setLatestOutputFileId(job.outputFileId);
+    }
 
     if (job.status === 'COMPLETED' && job.outputFileId) {
       setMaxAllowedStep(6);
@@ -202,6 +227,7 @@ export default function App() {
       status: outputItem.status || 'COMPLETED',
       outputFileId: outputItem.outputFileId
     });
+    setLatestOutputFileId(outputItem.outputFileId);
     setUploadedFile(null);
     setMaxAllowedStep(6);
     setCurrentStep(6);
@@ -356,13 +382,15 @@ export default function App() {
                     onProceedToOutput={() => setCurrentStep(6)}
                     customKeylines={customKeylines}
                     onOpenKeylineStudio={() => setIsKeylineStudioOpen(true)}
+                    initialProductType={initialProductType}
+                    initialSheetConfig={initialSheetConfig}
                   />
                 )}
 
                 {currentStep === 6 && activeJob && (
                   <PdfCanvasViewer
                     jobId={activeJob.jobId}
-                    outputFileId={activeJob.outputFileId || impositionData?.outputFileId}
+                    outputFileId={latestOutputFileId || activeJob.outputFileId || impositionData?.outputFileId}
                     activeJob={activeJob}
                     onReset={handleReset}
                   />

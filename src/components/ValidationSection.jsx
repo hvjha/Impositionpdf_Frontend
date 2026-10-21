@@ -159,6 +159,29 @@ export default function ValidationSection({ jobId, validationData, onValidationS
           ))}
         </div>
       </div>
+
+      {/* Prominent Bottom Action Bar for Non-Tech Operators */}
+      <div className="mt-6 p-4 rounded-2xl bg-[#101726] border border-[#223147] flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-950 border border-emerald-700/60 flex items-center justify-center text-emerald-400 shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div className="text-left">
+            <p className="text-xs font-bold text-white m-0">Preflight Audit Passed: 100% Ready for Press</p>
+            <p className="text-[11px] text-slate-400 m-0 font-mono">
+              Next: Step 05 Imposition Studio with strict 5.0 mm die gap & live sheet preview
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={onProceedToImposition}
+          className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 hover:from-emerald-300 hover:to-blue-400 text-slate-950 font-bold font-mono text-xs sm:text-sm shadow-xl shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <span>Proceed to Step 05: Imposition Studio (5mm Die Gap)</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

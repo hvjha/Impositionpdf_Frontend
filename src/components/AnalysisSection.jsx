@@ -306,10 +306,33 @@ export default function AnalysisSection({ jobId, analysisData, onAnalysisSuccess
             <span>
               This PDF does not contain an author-defined <code className="text-cyan-300">/TrimBox</code> or <code className="text-cyan-300">/BleedBox</code> dictionary. 
               The trim boundary is automatically inferred to the page boundary (<code className="text-slate-200">{srcW_mm} × {srcH_mm} mm</code>). 
-              You can define precise trim & bleed margins in Step 04 or proceed to Imposition.
+              The system will automatically crop to the packaging dieline with a strict 5.0 mm die gap during imposition.
             </span>
           </div>
         )}
+      </div>
+
+      {/* Prominent Bottom Action Bar for Non-Tech Operators */}
+      <div className="mt-6 p-4 rounded-2xl bg-[#101726] border border-[#223147] flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-950 border border-emerald-700/60 flex items-center justify-center text-emerald-400 shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div className="text-left">
+            <p className="text-xs font-bold text-white m-0">Preflight Geometry Analysis Complete</p>
+            <p className="text-[11px] text-slate-400 m-0 font-mono">
+              Flat size: {srcW_mm} × {srcH_mm} mm • Next: Step 03 Preflight Validation & Quality Audit
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={onProceedToValidation}
+          className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500 hover:from-emerald-300 hover:to-blue-400 text-slate-950 font-bold font-mono text-xs sm:text-sm shadow-xl shadow-cyan-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <span>Proceed to Step 03: Preflight Validation</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

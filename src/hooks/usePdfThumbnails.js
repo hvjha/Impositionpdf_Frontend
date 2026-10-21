@@ -18,6 +18,7 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
 export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 320) {
   const [thumbnails, setThumbnails] = useState([]);
   const [pageAspectRatios, setPageAspectRatios] = useState([]);
+  const [pageViewports, setPageViewports] = useState([]);
   const [pageCount, setPageCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -66,6 +67,7 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
         const pagesToRender = Math.min(total, maxPages);
         const thumbs = [];
         const ratios = [];
+        const vports = [];
 
         for (let i = 1; i <= pagesToRender; i++) {
           if (cancelled) break;
@@ -74,6 +76,12 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
           const viewport = page.getViewport({ scale: 1 });
           const aspect = viewport.width / viewport.height;
           ratios.push(aspect);
+          vports.push({
+            widthPt: viewport.width,
+            heightPt: viewport.height,
+            widthMM: Math.round((viewport.width * 25.4 / 72) * 10) / 10,
+            heightMM: Math.round((viewport.height * 25.4 / 72) * 10) / 10
+          });
 
           // Calculate scale for desired thumbnail width
           const scale = thumbWidth / viewport.width;
@@ -106,6 +114,7 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
         if (!cancelled) {
           setThumbnails(thumbs);
           setPageAspectRatios(ratios);
+          setPageViewports(vports);
         }
       } catch (err) {
         if (!cancelled) {
@@ -132,5 +141,5 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
     };
   }, [pdfSource, maxPages, thumbWidth]);
 
-  return { thumbnails, pageAspectRatios, pageCount, loading, progress, error };
+  return { thumbnails, pageAspectRatios, pageViewports, pageCount, loading, progress, error };
 }

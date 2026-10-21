@@ -292,8 +292,50 @@ function DigitalBarcodeSVG({ x, y, width = 45, height = 4.5, label = 'DIGI-CUT' 
 }
 
 // ─── Packaging Box Dieline Vector Overlay SVG ──────────────────────────────
-function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineOverlay = false, cellIndex = 1, boxParams = {} }) {
+function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineOverlay = false, cellIndex = 1, boxParams = {}, hasArtwork = false }) {
   if (!dielineOverlay) return null;
+
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+
+  // When real artwork is displayed, render a crisp, clean cutting-die boundary
+  if (hasArtwork) {
+    return (
+      <g transform={rot ? `rotate(${rot} ${cx} ${cy})` : undefined} className="box-dieline-outer-cut">
+        {/* Precise Red Cutting Die Perimeter */}
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          fill="none"
+          stroke="#EF4444"
+          strokeWidth="0.5"
+        />
+        {/* Corner registration crosshairs */}
+        <path
+          d={`M ${x - 1.5} ${y} L ${x + 2} ${y} M ${x} ${y - 1.5} L ${x} ${y + 2}`}
+          stroke="#EF4444"
+          strokeWidth="0.35"
+        />
+        <path
+          d={`M ${x + w - 2} ${y} L ${x + w + 1.5} ${y} M ${x + w} ${y - 1.5} L ${x + w} ${y + 2}`}
+          stroke="#EF4444"
+          strokeWidth="0.35"
+        />
+        <path
+          d={`M ${x - 1.5} ${y + h} L ${x + 2} ${y + h} M ${x} ${y + h - 2} L ${x} ${y + h + 1.5}`}
+          stroke="#EF4444"
+          strokeWidth="0.35"
+        />
+        <path
+          d={`M ${x + w - 2} ${y + h} L ${x + w + 1.5} ${y + h} M ${x + w} ${y + h - 2} L ${x + w} ${y + h + 1.5}`}
+          stroke="#EF4444"
+          strokeWidth="0.35"
+        />
+      </g>
+    );
+  }
 
   // 1. Box Structural Dimensions (mm & Proportions)
   const L = parseFloat(boxParams?.length) || 100;
@@ -318,11 +360,11 @@ function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineO
   const fH = H / totalHParts;
   const fTuckTop = (T + 6) / totalHParts;
 
-  // 2. Active Dieline Geometry (In SVG coords, 2% safety margin)
-  const padX = w * 0.02;
-  const padY = h * 0.02;
-  const innerW = w - padX * 2;
-  const innerH = h - padY * 2;
+  // 2. Active Dieline Geometry (Strict 0mm padding so dieline outer bounds align exactly with the cell footprint)
+  const padX = 0;
+  const padY = 0;
+  const innerW = w;
+  const innerH = h;
 
   const g = innerW * fG;
   const l1 = innerW * fL1;
@@ -347,8 +389,6 @@ function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineO
   const v2 = v1 + mainH;
   const v3 = v0 + innerH;
 
-  const cx = x + w / 2;
-  const cy = y + h / 2;
   const dimY = v1 + mainH * 0.5;
 
   return (
@@ -542,6 +582,7 @@ export default function SheetPreview({
   sheetIndex = 0,
   onSheetChange,
   thumbnails = [],
+  pageViewports = [],
   thumbnailsLoading = false,
   thumbnailsProgress = 0,
   pageRotation = 0,
@@ -713,8 +754,8 @@ export default function SheetPreview({
     const mb = parseFloat(marginBottom) || 10;
     const ml = parseFloat(marginLeft) || 10;
     const mr = parseFloat(marginRight) || 10;
-    const gx = parseFloat(gutterX) || 4;
-    const gy = parseFloat(gutterY) || 4;
+    const gx = (parseFloat(gutterX) != null && !isNaN(parseFloat(gutterX))) ? parseFloat(gutterX) : 5.0;
+    const gy = (parseFloat(gutterY) != null && !isNaN(parseFloat(gutterY))) ? parseFloat(gutterY) : 5.0;
     const bl = parseFloat(bleed) || 3;
     const c = Math.max(1, parseInt(columns) || 2);
     const r = Math.max(1, parseInt(rows) || 3);
@@ -725,10 +766,12 @@ export default function SheetPreview({
     const isBox = partMode === 'BOX';
     const isInch = boxParams?.unit === 'inch' || (boxParams?.length && parseFloat(boxParams.length) < 20) || (sw / 25.4 >= 10);
     
-    // Determine effective box dimensions (trimmed footprint)
-    const effBoxW_mm = parseFloat(boxParams?.effectiveBoxWidth) || 
+    // Determine effective box dimensions (trimmed footprint - prioritizing exact trimmed dieline)
+    const vpW = pageViewports?.[0]?.widthMM;
+    const vpH = pageViewports?.[0]?.heightMM;
+    const effBoxW_mm = parseFloat(boxParams?.effectiveBoxWidth) || vpW || 
       (isInch ? (parseFloat(boxParams?.flatWidth) || 11.84) * 25.4 : (parseFloat(boxParams?.flatWidth) || 300));
-    const effBoxH_mm = parseFloat(boxParams?.effectiveBoxHeight) || 
+    const effBoxH_mm = parseFloat(boxParams?.effectiveBoxHeight) || vpH || 
       (isInch ? (parseFloat(boxParams?.flatHeight) || 9.37) * 25.4 : (parseFloat(boxParams?.flatHeight) || 238));
 
     const isRot = (parseInt(pageRotation, 10) || 0) === 90 || (parseInt(pageRotation, 10) || 0) === 270;
@@ -746,7 +789,7 @@ export default function SheetPreview({
     const startY = mt + Math.max(0, (printableH - layoutH_calc) / 2);
 
     const cells = [];
-    const interlockMode = boxParams?.interlockMode || 'INTERLOCKING';
+    const interlockMode = boxParams?.interlockMode || 'STANDARD';
 
     for (let row = 0; row < r; row++) {
       for (let col = 0; col < c; col++) {
@@ -806,10 +849,11 @@ export default function SheetPreview({
 
     return {
       sw, sh, mt, mb, ml, mr, gx, gy, bl, c, r, cellW, cellH, cells,
+      startX, startY,
       printableW, printableH, efficiencyPct, wastePct,
       minX, maxX, minY, maxY, layoutW_mm, layoutH_mm, isInch, dimW_text, dimH_text, sheetSizeText
     };
-  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages, partMode, sheetIndex]);
+  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages, partMode, sheetIndex, pageViewports]);
 
   // ─── Total Signatures / Forms ───────────────────────────────────────────
   const layoutPagesCount = parseInt(selectedLayout, 10) || 16;
@@ -1587,84 +1631,53 @@ export default function SheetPreview({
                       strokeWidth="0.3"
                     />
 
-                    {/* PDF Artwork Image (Rotated for Interlocking & Clipped if Trimmed) */}
+                    {/* PDF Artwork Image (Cropped to exact dieline boundary & rotated for interlocking) */}
                     {hasArtwork && (() => {
-                      const srcW = parseFloat(boxParams?.sourcePdfWidth) || cell.w;
-                      const srcH = parseFloat(boxParams?.sourcePdfHeight) || cell.h;
-                      const isInchUnit = boxParams?.unit === 'inch';
-                      const unitFactor = isInchUnit ? 25.4 : 1;
-                      const tLeft = boxParams?.trimLeftMM != null ? parseFloat(boxParams.trimLeftMM) : (parseFloat(boxParams?.trimLeft) || 0) * unitFactor;
-                      const tRight = boxParams?.trimRightMM != null ? parseFloat(boxParams.trimRightMM) : (parseFloat(boxParams?.trimRight) || 0) * unitFactor;
-                      const tTop = boxParams?.trimTopMM != null ? parseFloat(boxParams.trimTopMM) : (parseFloat(boxParams?.trimTop) || 0) * unitFactor;
-                      const tBottom = boxParams?.trimBottomMM != null ? parseFloat(boxParams.trimBottomMM) : (parseFloat(boxParams?.trimBottom) || 0) * unitFactor;
-                      const isTrimmed = tLeft > 0 || tRight > 0 || tTop > 0 || tBottom > 0;
-
-                      if (!isTrimmed) {
-                        return (
-                          <image
-                            href={thumbUrl}
-                            x={pad + cell.x}
-                            y={pad + cell.y}
-                            width={cell.w}
-                            height={cell.h}
-                            preserveAspectRatio="xMidYMid meet"
-                            transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
-                          />
-                        );
-                      }
-
-                      const cropW = Math.max(10, srcW - tLeft - tRight);
-                      const cropH = Math.max(10, srcH - tTop - tBottom);
-                      const scaleX = cell.w / cropW;
-                      const scaleY = cell.h / cropH;
-                      const imgW = srcW * scaleX;
-                      const imgH = srcH * scaleY;
-                      const imgX = pad + cell.x - (tLeft * scaleX);
-                      const imgY = pad + cell.y - (tTop * scaleY);
+                      const srcW = pageViewports?.[0]?.widthMM || cell.w;
+                      const srcH = pageViewports?.[0]?.heightMM || cell.h;
+                      const cropL = parseFloat(boxParams?.cropLeftMM ?? boxParams?.trimLeftMM) || 0;
+                      const cropT = parseFloat(boxParams?.cropTopMM ?? boxParams?.trimTopMM) || 0;
+                      const cropR = parseFloat(boxParams?.cropRightMM ?? boxParams?.trimRightMM) || 0;
+                      const cropB = parseFloat(boxParams?.cropBottomMM ?? boxParams?.trimBottomMM) || 0;
+                      const viewW = Math.max(10, srcW - cropL - cropR);
+                      const viewH = Math.max(10, srcH - cropT - cropB);
+                      const hasCrop = (cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0) && (viewW < srcW - 2 || viewH < srcH - 2);
 
                       return (
-                        <g clipPath={`url(#box-clip-${cell.idx})`}>
-                          <image
-                            href={thumbUrl}
-                            x={imgX}
-                            y={imgY}
-                            width={imgW}
-                            height={imgH}
-                            preserveAspectRatio="none"
-                            transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
-                          />
+                        <g transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}>
+                          {hasCrop ? (
+                            <svg
+                              x={pad + cell.x}
+                              y={pad + cell.y}
+                              width={cell.w}
+                              height={cell.h}
+                              viewBox={`${cropL} ${cropT} ${viewW} ${viewH}`}
+                              preserveAspectRatio="none"
+                            >
+                              <image
+                                href={thumbUrl}
+                                x="0"
+                                y="0"
+                                width={srcW}
+                                height={srcH}
+                                preserveAspectRatio="none"
+                              />
+                            </svg>
+                          ) : (
+                            <image
+                              href={thumbUrl}
+                              x={pad + cell.x}
+                              y={pad + cell.y}
+                              width={cell.w}
+                              height={cell.h}
+                              preserveAspectRatio="none"
+                            />
+                          )}
                         </g>
                       );
                     })()}
 
-                    {/* Trimmed indicator badge */}
-                    {hasArtwork && ((parseFloat(boxParams?.trimTop) || 0) > 0 || (parseFloat(boxParams?.trimBottom) || 0) > 0) && (
-                      <g>
-                        <rect
-                          x={pad + cell.x + 2}
-                          y={pad + cell.y + cell.h - 6.5}
-                          width={46}
-                          height={5}
-                          rx="1"
-                          fill="rgba(15, 23, 42, 0.88)"
-                          stroke="#10B981"
-                          strokeWidth="0.2"
-                        />
-                        <text
-                          x={pad + cell.x + 25}
-                          y={pad + cell.y + cell.h - 3}
-                          textAnchor="middle"
-                          fontSize="2.6"
-                          fontFamily="monospace"
-                          fontWeight="bold"
-                          fill="#34D399"
-                        >
-                          TRIMMED (-{Math.round(((parseFloat(boxParams?.trimTop) || 0) + (parseFloat(boxParams?.trimBottom) || 0)) * 100) / 100}{boxParams?.unit === 'inch' ? '"' : 'mm'})
-                        </text>
-                      </g>
-                    )}
-
-                    {/* Vector Dieline Overlay - Only shown when Key Die Lines is explicitly checked */}
+                    {/* Vector Dieline Overlay - Clean cutting die border when artwork is shown */}
                     {Boolean(boxParams?.dielineOverlay) && (
                       <BoxCellDielineOverlay
                         x={pad + cell.x}
@@ -1676,11 +1689,12 @@ export default function SheetPreview({
                         dielineOverlay={true}
                         cellIndex={cell.idx + 1}
                         boxParams={boxParams}
+                        hasArtwork={hasArtwork}
                       />
                     )}
 
-                    {/* Crop marks at cell corners (Suppressed when Key Die Lines are shown) */}
-                    {cropMarks && !boxParams?.dielineOverlay && (
+                    {/* Crop marks at cell corners (Suppressed in Box mode or when Key Die Lines are shown) */}
+                    {cropMarks && !isBoxMode && !boxParams?.dielineOverlay && (
                       <CropMarksSVG
                         x={pad + cell.x}
                         y={pad + cell.y}
@@ -1690,6 +1704,111 @@ export default function SheetPreview({
                         cellH={cell.h}
                       />
                     )}
+                  </g>
+                );
+              })}
+
+              {/* ═════════════════════════════════════════════════════════════════
+                  INTER-BOX GAP CAD DIMENSIONS (STRICT UNIFORM GAP VERIFICATION)
+                 ═════════════════════════════════════════════════════════════════ */}
+              {/* Horizontal Gap Annotation (between adjacent columns) */}
+              {boxLayout.c > 1 && Array.from({ length: boxLayout.c - 1 }, (_, i) => {
+                const x1 = pad + boxLayout.startX + (i + 1) * boxLayout.cellW + i * boxLayout.gx;
+                const x2 = x1 + boxLayout.gx;
+                const midX = (x1 + x2) / 2;
+                const yStart = pad + boxLayout.startY;
+                const yEnd = yStart + boxLayout.r * boxLayout.cellH + (boxLayout.r - 1) * boxLayout.gy;
+                const midY = (yStart + yEnd) / 2;
+
+                return (
+                  <g key={`box-gap-h-${i}`} className="inter-box-gap-h">
+                    {/* Soft emerald highlight strip showing exact inter-box gap */}
+                    <rect
+                      x={x1}
+                      y={yStart}
+                      width={boxLayout.gx}
+                      height={yEnd - yStart}
+                      fill="rgba(16, 185, 129, 0.15)"
+                      stroke="#10B981"
+                      strokeWidth="0.25"
+                      strokeDasharray="1 1"
+                    />
+                    {/* Dimension Line & Badge */}
+                    <line x1={x1} y1={midY} x2={x2} y2={midY} stroke="#10B981" strokeWidth="0.35" />
+                    <line x1={x1} y1={midY - 2.5} x2={x1} y2={midY + 2.5} stroke="#10B981" strokeWidth="0.35" />
+                    <line x1={x2} y1={midY - 2.5} x2={x2} y2={midY + 2.5} stroke="#10B981" strokeWidth="0.35" />
+                    <rect
+                      x={midX - 16}
+                      y={midY - 3.8}
+                      width="32"
+                      height="7.6"
+                      rx="1.5"
+                      fill="#0F172A"
+                      stroke="#10B981"
+                      strokeWidth="0.4"
+                    />
+                    <text
+                      x={midX}
+                      y={midY + 1.4}
+                      textAnchor="middle"
+                      fontSize="3.4"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      fill="#34D399"
+                    >
+                      ↔ {boxLayout.gx.toFixed(1)} mm
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Vertical Gap Annotation (between adjacent rows) */}
+              {boxLayout.r > 1 && Array.from({ length: boxLayout.r - 1 }, (_, i) => {
+                const y1 = pad + boxLayout.startY + (i + 1) * boxLayout.cellH + i * boxLayout.gy;
+                const y2 = y1 + boxLayout.gy;
+                const midY = (y1 + y2) / 2;
+                const xStart = pad + boxLayout.startX;
+                const xEnd = xStart + boxLayout.c * boxLayout.cellW + (boxLayout.c - 1) * boxLayout.gx;
+                const midX = (xStart + xEnd) / 2;
+
+                return (
+                  <g key={`box-gap-v-${i}`} className="inter-box-gap-v">
+                    {/* Soft emerald highlight strip showing exact inter-box gap */}
+                    <rect
+                      x={xStart}
+                      y={y1}
+                      width={xEnd - xStart}
+                      height={boxLayout.gy}
+                      fill="rgba(16, 185, 129, 0.15)"
+                      stroke="#10B981"
+                      strokeWidth="0.25"
+                      strokeDasharray="1 1"
+                    />
+                    {/* Dimension Line & Badge */}
+                    <line x1={midX} y1={y1} x2={midX} y2={y2} stroke="#10B981" strokeWidth="0.35" />
+                    <line x1={midX - 2.5} y1={y1} x2={midX + 2.5} y2={y1} stroke="#10B981" strokeWidth="0.35" />
+                    <line x1={midX - 2.5} y1={y2} x2={midX + 2.5} y2={y2} stroke="#10B981" strokeWidth="0.35" />
+                    <rect
+                      x={midX - 16}
+                      y={midY - 3.8}
+                      width="32"
+                      height="7.6"
+                      rx="1.5"
+                      fill="#0F172A"
+                      stroke="#10B981"
+                      strokeWidth="0.4"
+                    />
+                    <text
+                      x={midX}
+                      y={midY + 1.4}
+                      textAnchor="middle"
+                      fontSize="3.4"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      fill="#34D399"
+                    >
+                      ↕ {boxLayout.gy.toFixed(1)} mm
+                    </text>
                   </g>
                 );
               })}

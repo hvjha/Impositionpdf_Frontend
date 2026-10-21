@@ -9,7 +9,9 @@ import {
   ShieldCheck,
   RefreshCw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  Layers
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -27,25 +29,52 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sheetDetails, setSheetDetails] = useState({ width: 0, height: 0 });
+  const [localBlobUrl, setLocalBlobUrl] = useState(null);
+  const [viewMode, setViewMode] = useState('NATIVE'); // 'NATIVE' | 'CANVAS'
 
   const canvasRef = useRef(null);
   const pdfDocRef = useRef(null);
   const renderTaskRef = useRef(null);
 
-  const pdfUrl = outputFileId ? getOutputPdfUrl(outputFileId) : getJobOutputUrl(jobId);
+  // Determine stream URL
+  const pdfUrl = outputFileId ? getOutputPdfUrl(outputFileId) : (jobId ? getJobOutputUrl(jobId) : null);
 
-  // Load the PDF document
+  // Load the PDF document via robust fetch arrayBuffer to avoid Web Worker cross-origin/stream errors
   useEffect(() => {
     let cancelled = false;
 
     const loadPdf = async () => {
-      if (!pdfUrl) return;
+      if (!pdfUrl) {
+        setLoading(false);
+        setError('No production output file identifier was received. Please generate imposition.');
+        return;
+      }
+
       setLoading(true);
       setError(null);
 
       try {
+        // Fetch raw binary buffer directly in main window thread
+        const response = await fetch(pdfUrl);
+        if (!response.ok) {
+          throw new Error(`Server returned HTTP ${response.status} ${response.statusText || 'Error'} while fetching imposed PDF.`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        if (cancelled) return;
+
+        if (!buffer || buffer.byteLength === 0) {
+          throw new Error('Imposed PDF document is empty (0 bytes).');
+        }
+
+        // Create a local Object URL for instant browser rendering & download fallback
+        const blob = new Blob([buffer], { type: 'application/pdf' });
+        const objectUrl = URL.createObjectURL(blob);
+        setLocalBlobUrl(objectUrl);
+
+        // Load into PDF.js via raw Uint8Array so worker NEVER needs to perform network requests
         const loadingTask = pdfjsLib.getDocument({
-          url: pdfUrl,
+          data: new Uint8Array(buffer),
           disableRange: true,
           disableStream: true,
         });
@@ -56,10 +85,22 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
         pdfDocRef.current = pdf;
         setTotalPages(pdf.numPages);
         setCurrentPage(1);
+
+        // Extract first page size
+        try {
+          const firstPage = await pdf.getPage(1);
+          setSheetDetails({
+            width: Math.round(firstPage.view[2] * 0.352778),
+            height: Math.round(firstPage.view[3] * 0.352778),
+          });
+        } catch { }
+
       } catch (err) {
         if (!cancelled) {
           console.error('[PdfCanvasViewer] Error loading output PDF:', err);
-          setError(err.message || 'Failed to load imposed PDF stream.');
+          setError(err.message || 'Failed to render imposed PDF preview.');
+          // Auto-fallback to native embedded preview if localBlobUrl was created
+          setViewMode('NATIVE');
         }
       } finally {
         if (!cancelled) {
@@ -77,12 +118,15 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
           renderTaskRef.current.cancel();
         } catch { }
       }
+      if (localBlobUrl) {
+        URL.revokeObjectURL(localBlobUrl);
+      }
     };
   }, [pdfUrl]);
 
-  // Render the current page onto the canvas
+  // Render current page onto HTML5 canvas
   const renderCurrentPage = useCallback(async () => {
-    if (!pdfDocRef.current || !canvasRef.current) return;
+    if (!pdfDocRef.current || !canvasRef.current || viewMode !== 'CANVAS') return;
 
     try {
       if (renderTaskRef.current) {
@@ -93,10 +137,14 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
 
       const page = await pdfDocRef.current.getPage(currentPage);
       const canvas = canvasRef.current;
+      if (!canvas) return;
       const ctx = canvas.getContext('2d');
 
-      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-      const baseScale = (zoom / 100) * 1.5; // High-DPI base multiplier
+      const pageWidthPt = (page.view && page.view[2]) || 1000;
+      const targetDisplayWidth = typeof window !== 'undefined' ? Math.min(window.innerWidth - 140, 1100) : 1000;
+      const fitScale = targetDisplayWidth / Math.max(100, pageWidthPt);
+      const pixelRatio = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
+      const baseScale = (zoom / 100) * fitScale;
       const viewport = page.getViewport({ scale: baseScale * pixelRatio });
 
       canvas.width = Math.floor(viewport.width);
@@ -126,7 +174,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
         console.warn('[PdfCanvasViewer] Render error:', err);
       }
     }
-  }, [currentPage, zoom]);
+  }, [currentPage, zoom, viewMode]);
 
   useEffect(() => {
     renderCurrentPage();
@@ -134,8 +182,8 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
 
   const handleDownload = () => {
     const link = document.createElement('a');
-    link.href = pdfUrl;
-    link.download = `prepress_output_${jobId ? jobId.slice(-6) : 'sheet'}.pdf`;
+    link.href = localBlobUrl || pdfUrl;
+    link.download = `prepress_imposed_sheet_${jobId ? jobId.slice(-6) : 'output'}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -145,39 +193,42 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
     <div className="w-full max-w-6xl mx-auto py-6 px-4">
 
       {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-[#131B28] border border-[#222E42] p-5 rounded-2xl text-left">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-[#131B28] border border-[#222E42] p-5 rounded-2xl text-left shadow-xl">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-950 border border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0">
             <CheckCircle2 className="w-7 h-7" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-white m-0">Production PDF Ready</h3>
+              <h3 className="text-lg font-bold text-white m-0">Imposition Sheet Generated</h3>
               <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 rounded">
-                PDF/X-4 CERTIFIED
+                PDF/X-4 READY
+              </span>
+              <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/60 rounded">
+                {(activeJob?.config?.boxConfig?.gutterX === 0 || activeJob?.config?.gutter?.horizontal === 0) ? 'ZERO GAPS (BUTT-CUT)' : (activeJob?.config?.boxConfig?.gutterX ? `${activeJob.config.boxConfig.gutterX} MM DIE GAP` : 'ZERO GAPS (BUTT-CUT)')}
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-0.5 font-mono">
-              Job #{jobId ? jobId.slice(-6).toUpperCase() : 'N/A'} | GridFS ID: {outputFileId ? outputFileId.slice(-6) : 'N/A'}
+              Job #{jobId ? jobId.slice(-6).toUpperCase() : 'N/A'} | Output ID: {outputFileId ? outputFileId.slice(-6) : 'N/A'}
               {sheetDetails.width > 0 && ` | Sheet: ${sheetDetails.width} × ${sheetDetails.height} mm`}
             </p>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-3 shrink-0 flex-wrap">
           <a
-            href={pdfUrl}
+            href={localBlobUrl || pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-300 bg-[#1C2638] hover:bg-[#25334A] border border-[#2D3F5C] rounded-xl transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-300 bg-[#1C2638] hover:bg-[#25334A] border border-[#2D3F5C] rounded-xl transition-colors cursor-pointer"
           >
-            <ExternalLink className="w-3.5 h-3.5" /> Open Direct Stream
+            <ExternalLink className="w-3.5 h-3.5" /> Open in New Tab
           </a>
 
           <button
             onClick={handleDownload}
-            className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-slate-950 bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 hover:from-emerald-300 hover:to-blue-300 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-slate-950 bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 hover:from-emerald-300 hover:to-blue-300 rounded-xl shadow-lg shadow-emerald-500/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Download className="w-4 h-4" /> Download Production PDF
           </button>
@@ -190,14 +241,36 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
         {/* Toolbar */}
         <div className="bg-[#171F2C] border-b border-[#243144] px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
 
-          {/* Left: HD Status & Page Nav */}
-          <div className="flex items-center gap-3 text-xs font-mono text-slate-300">
-            <div className="flex items-center gap-1.5 text-cyan-400 font-bold">
-              <Eye className="w-4 h-4" />
-              <span>LIVE HD CANVAS VIEW</span>
+          {/* Left: View Mode Selector & Status */}
+          <div className="flex items-center gap-3 text-xs font-mono text-slate-300 flex-wrap">
+            <div className="flex items-center bg-[#0D121B] border border-[#233144] rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('CANVAS')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                  viewMode === 'CANVAS'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>HD Canvas View</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('NATIVE')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                  viewMode === 'NATIVE'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Native PDF Viewer</span>
+              </button>
             </div>
 
-            {totalPages > 1 && (
+            {totalPages > 1 && viewMode === 'CANVAS' && (
               <div className="flex items-center gap-1.5 bg-[#0D121B] border border-[#233144] rounded-lg px-2 py-1">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
@@ -222,66 +295,73 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
             )}
           </div>
 
-          {/* Right: Zoom controls */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setZoom((z) => Math.max(z - 25, 25))}
-              className="p-1.5 rounded-lg bg-[#1D2738] hover:bg-[#28364D] text-slate-300 transition-colors"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-mono text-cyan-300 w-12 text-center font-bold">{zoom}%</span>
-            <button
-              onClick={() => setZoom((z) => Math.min(z + 25, 200))}
-              className="p-1.5 rounded-lg bg-[#1D2738] hover:bg-[#28364D] text-slate-300 transition-colors"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setZoom(100)}
-              className="px-2 py-1 text-[10px] font-mono rounded bg-[#1D2738] hover:bg-[#28364D] text-slate-300 border border-[#2E3E58] transition-colors"
-              title="Reset Zoom"
-            >
-              100%
-            </button>
-          </div>
+          {/* Right: Zoom controls for canvas view */}
+          {viewMode === 'CANVAS' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setZoom((z) => Math.max(z - 25, 25))}
+                className="p-1.5 rounded-lg bg-[#1D2738] hover:bg-[#28364D] text-slate-300 transition-colors"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono text-cyan-300 w-12 text-center font-bold">{zoom}%</span>
+              <button
+                onClick={() => setZoom((z) => Math.min(z + 25, 200))}
+                className="p-1.5 rounded-lg bg-[#1D2738] hover:bg-[#28364D] text-slate-300 transition-colors"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setZoom(100)}
+                className="px-2 py-1 text-[10px] font-mono rounded bg-[#1D2738] hover:bg-[#28364D] text-slate-300 border border-[#2E3E58] transition-colors"
+                title="Reset Zoom"
+              >
+                100%
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Embedded Canvas Container */}
-        <div className="p-6 bg-[#0A0D14] flex justify-center items-center min-h-[620px] overflow-auto relative">
+        {/* Viewport Container */}
+        <div className="p-4 sm:p-6 bg-[#0A0D14] flex justify-center items-center min-h-[640px] overflow-auto relative">
 
           {loading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0A0D14]/80 z-10 gap-3">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0A0D14]/90 z-20 gap-3">
               <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
               <p className="text-xs font-mono text-slate-300">Rendering production sheet canvas...</p>
             </div>
           )}
 
-          {error && (
-            <div className="text-center p-8 bg-rose-950/20 border border-rose-800/40 rounded-xl max-w-md">
-              <p className="text-sm font-bold text-rose-300 mb-2">Error rendering preview</p>
-              <p className="text-xs font-mono text-slate-400 mb-4">{error}</p>
-              <a
-                href={pdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-950 bg-cyan-400 hover:bg-cyan-300 rounded-lg"
-              >
-                <ExternalLink className="w-3.5 h-3.5" /> View Direct Stream in Browser
-              </a>
+          {/* MODE 1: HTML5 Canvas */}
+          {viewMode === 'CANVAS' && !error && (
+            <div className="shadow-2xl rounded-sm border border-[#333] bg-white transition-transform overflow-auto max-w-full">
+              <canvas ref={canvasRef} className="block max-w-full h-auto" />
             </div>
           )}
 
-          {/* HTML5 Canvas with paper drop shadow */}
-          <div className="shadow-2xl rounded-sm border border-[#333] bg-white transition-transform">
-            <canvas ref={canvasRef} className="block max-w-full h-auto" />
-          </div>
+          {/* MODE 2 or FALLBACK: Embedded Native PDF Document View */}
+          {(viewMode === 'NATIVE' || error) && (
+            <div className="w-full h-[700px] rounded-xl overflow-hidden border border-[#222E42] bg-[#141C2A]">
+              {localBlobUrl || pdfUrl ? (
+                <iframe
+                  src={`${localBlobUrl || pdfUrl}#toolbar=1&navpanes=0`}
+                  title="Imposed PDF Output Preview"
+                  className="w-full h-full border-0"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                  <p className="text-sm font-bold text-rose-300 mb-2">Imposed PDF Output Not Found</p>
+                  <p className="text-xs font-mono text-slate-400 mb-4">{error || 'Please run imposition in Step 05 to generate the production sheet.'}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sheet side switcher tabs */}
-        {totalPages > 1 && (
+        {totalPages > 1 && viewMode === 'CANVAS' && (
           <div className="bg-[#131A26] border-t border-[#1F2A3A] px-4 py-2 flex items-center justify-center gap-2 overflow-x-auto">
             {Array.from({ length: totalPages }, (_, i) => {
               const sheetNum = Math.floor(i / 2) + 1;
@@ -291,7 +371,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
                 <button
                   key={i}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={`px-3 py-1 text-xs font-mono rounded-lg border transition-all ${isSelected
+                  className={`px-3 py-1 text-xs font-mono rounded-lg border transition-all cursor-pointer ${isSelected
                       ? 'bg-cyan-500/20 border-cyan-500/60 text-cyan-300 font-bold'
                       : 'bg-[#182130] border-[#29384E] text-slate-400 hover:text-slate-200'
                     }`}
@@ -309,7 +389,7 @@ export default function PdfCanvasViewer({ jobId, outputFileId, activeJob, onRese
             <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
               <ShieldCheck className="w-4 h-4" /> ISO 12647-2 Compliant
             </span>
-            <span>Bleed allowance & cut marks baked</span>
+            <span>{(activeJob?.config?.boxConfig?.gutterX === 0 || activeJob?.config?.gutter?.horizontal === 0) ? 'Zero gap (butt-cut tight CAD pack) between adjacent cartons baked' : (activeJob?.config?.boxConfig?.gutterX ? `Strict ${activeJob.config.boxConfig.gutterX} mm die gap between adjacent objects baked` : 'Zero gap (butt-cut tight CAD pack) between adjacent cartons baked')}</span>
           </div>
 
           <button

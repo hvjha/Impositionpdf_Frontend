@@ -9,16 +9,26 @@ import {
   Zap,
   HardDrive,
   FolderArchive,
-  Scissors
+  Scissors,
+  Sparkles,
+  Package,
+  BookOpen
 } from 'lucide-react';
-import { uploadPdfFile } from '../services/api';
+import { uploadPdfFile, analyzePdfJob } from '../services/api';
+import ProductAndSheetModal from './ProductAndSheetModal';
 
 export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKeylineStudio }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('Fast Ingesting Source PDF...');
   const [error, setError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+
+  // ─── Post-Upload Product & Sheet Wizard Modal State ─────────────────────
+  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+  const [uploadedJob, setUploadedJob] = useState(null);
+  const [uploadedAnalysis, setUploadedAnalysis] = useState(null);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -61,12 +71,29 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKe
   const handleUpload = async () => {
     if (!file) return;
     setUploading(true);
+    setUploadProgressText('Uploading & Ingesting PDF file...');
     setError(null);
 
     try {
       const res = await uploadPdfFile(file);
       if (res.success && res.job) {
-        onUploadSuccess(res.job, file);
+        setUploadedJob(res.job);
+
+        // Instantly perform preflight analysis to detect finished dimensions
+        setUploadProgressText('Inspecting finished dimensions & boxes...');
+        let analysisData = null;
+        try {
+          const analysisRes = await analyzePdfJob(res.job.jobId);
+          if (analysisRes?.success && analysisRes?.job?.analysis) {
+            analysisData = analysisRes.job.analysis;
+            setUploadedAnalysis(analysisData);
+          }
+        } catch {
+          // If analysis has a minor hiccup, proceed gracefully with fallback dimensions
+        }
+
+        // Open the user-friendly Product & Sheet Optimizer modal
+        setIsSetupModalOpen(true);
       } else {
         throw new Error(res.message || 'Upload failed');
       }
@@ -74,6 +101,14 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKe
       setError(err.message || 'Failed to upload PDF file to backend.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Called when user selects Book Cover or Box & clicks "Proceed to Imposition"
+  const handleProceedFromSetup = (setupOptions) => {
+    setIsSetupModalOpen(false);
+    if (uploadedJob && file) {
+      onUploadSuccess(uploadedJob, file, setupOptions);
     }
   };
 
@@ -168,17 +203,17 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKe
           className={`flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all shadow-lg ${
             !file || uploading
               ? 'bg-[#1C2638] text-slate-500 cursor-not-allowed border border-[#2A3952]'
-              : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-cyan-500/25 hover:scale-[1.02]'
+              : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-cyan-500/25 hover:scale-[1.02] cursor-pointer'
           }`}
         >
           {uploading ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Fast Ingesting Source PDF...
+              <span>{uploadProgressText}</span>
             </>
           ) : (
             <>
-              Start Prepress Analysis <ArrowRight className="w-4 h-4" />
+              Start Prepress Setup & Optimizer <ArrowRight className="w-4 h-4" />
             </>
           )}
         </button>
@@ -190,7 +225,7 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKe
             className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-xs tracking-wide glass-card hover:bg-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer ml-3"
           >
             <FolderArchive className="w-4 h-4 text-cyan-400" />
-            <span>Browse Previous Uploads & Impositions</span>
+            <span>Browse Archives</span>
           </button>
         )}
       </div>
@@ -250,10 +285,22 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKe
             <Zap className="w-4 h-4" /> IMPOSITION ENGINE
           </div>
           <p className="text-xs text-slate-400 m-0">
-            Auto-calculates N-up grid placement with cut marks & optical camera fiducials.
+            Auto-calculates N-up grid placement with minimum press sheets (20×28", 20×30") & yield.
           </p>
         </div>
       </div>
+
+      {/* ─── Production Setup & Sheet Yield Optimizer Modal ─────────────── */}
+      {isSetupModalOpen && (
+        <ProductAndSheetModal
+          isOpen={isSetupModalOpen}
+          onClose={() => setIsSetupModalOpen(false)}
+          file={file}
+          job={uploadedJob}
+          analysisData={uploadedAnalysis}
+          onProceed={handleProceedFromSetup}
+        />
+      )}
     </div>
   );
 }

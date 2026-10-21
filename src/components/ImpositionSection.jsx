@@ -33,7 +33,8 @@ import {
   Box,
   Zap,
   Ruler,
-  Upload
+  Upload,
+  ShieldCheck
 } from 'lucide-react';
 import { imposePdfJob, getSourcePdfUrl, getOutputPdfUrl, detectArtworkMargins } from '../services/api';
 import usePdfThumbnails from '../hooks/usePdfThumbnails';
@@ -60,6 +61,7 @@ const SHEET_PRESETS = [
   { name: 'A4', label: 'A4 (210 × 297 mm) • Digital Short-Run', width: 210, height: 297, tech: 'DIGITAL' },
   { name: 'B2', label: 'B2 (500 × 707 mm) • Half-Size Offset', width: 500, height: 707, tech: 'OFFSET' },
   { name: '20×26"', label: '20 × 26 in (508 × 660 mm) • Offset Short', width: 508, height: 660, tech: 'OFFSET' },
+  { name: '20×28"', label: '20 × 28 in (508 × 711 mm) • Packaging Press', width: 508, height: 711.2, tech: 'OFFSET' },
   { name: '20×30"', label: '20 × 30 in (508 × 762 mm) • Packaging Press', width: 508, height: 762, tech: 'OFFSET' },
   { name: '23×36"', label: '23 × 36 in (584 × 914 mm) • Offset 8-up', width: 584, height: 914, tech: 'OFFSET' },
   { name: '25×38"', label: '25 × 38 in (635 × 965 mm) • Offset Book', width: 635, height: 965, tech: 'OFFSET' },
@@ -282,24 +284,28 @@ export default function ImpositionSection({
   onImpositionSuccess,
   onProceedToOutput,
   customKeylines = [],
-  onOpenKeylineStudio
+  onOpenKeylineStudio,
+  initialProductType,
+  initialSheetConfig
 }) {
   const activeOutputFileId = activeJob?.outputFileId;
   const pdfSource = useMemo(() => {
     if (uploadedFile) return uploadedFile;
-    if (activeOutputFileId) return getOutputPdfUrl(activeOutputFileId);
     if (jobId) return getSourcePdfUrl(jobId);
+    if (activeOutputFileId) return getOutputPdfUrl(activeOutputFileId);
     return null;
-  }, [uploadedFile, activeOutputFileId, jobId]);
+  }, [uploadedFile, jobId, activeOutputFileId]);
 
   const {
     thumbnails,
+    pageViewports,
     loading: thumbnailsLoading,
     progress: thumbnailsProgress
   } = usePdfThumbnails(pdfSource, Math.min(64, parseInt(analysisData?.pageCount || 16, 10)));
 
   // ─── High-Level Prepress Part: Book Text vs Book Cover vs Box Studio ──
-  const [partMode, setPartMode] = useState('TEXT'); // 'TEXT' | 'COVER' | 'BOX'
+  const defaultMode = initialProductType || (analysisData?.pageCount > 4 ? 'TEXT' : 'BOX');
+  const [partMode, setPartMode] = useState(defaultMode);
 
   // ─── Book Text (Signature) Settings ─────────────────────────────────────
   const [selectedLayout, setSelectedLayout] = useState(16); // 16PP Preps standard
@@ -326,19 +332,20 @@ export default function ImpositionSection({
   const [boxHeight, setBoxHeight] = useState(4.72);  // H / Depth (4.72" for Acuzie 100ml)
   const [glueTabWidth, setGlueTabWidth] = useState(0.52); // Glue tab (0.52" for Acuzie 100ml)
   const [tuckFlapHeight, setTuckFlapHeight] = useState(1.5); // Tuck flap (1.5" for Acuzie 100ml)
-  const [boxCols, setBoxCols] = useState(2);
-  const [boxRows, setBoxRows] = useState(2);
-  const [interlockMode, setInterlockMode] = useState('INTERLOCKING'); // 'INTERLOCKING' | 'STANDARD' | 'HEAD_TO_HEAD'
-  const [dielineOverlay, setDielineOverlay] = useState(false); // Key Die Lines default to false for Book Text & Cover
+  const [boxCols, setBoxCols] = useState(initialSheetConfig?.cols || 2);
+  const [boxRows, setBoxRows] = useState(initialSheetConfig?.rows || (initialSheetConfig?.name === '20×28"' ? 1 : initialSheetConfig?.name === '20×30"' ? 1 : 2));
+  const [interlockMode, setInterlockMode] = useState('STANDARD'); // 'STANDARD' (Uniform 0° all ups) default for Zero Gaps & Tight CAD Pack
+  const [dielineOverlay, setDielineOverlay] = useState(defaultMode === 'BOX'); // Key Die Lines default to true for Box
   const [removeWhiteSpace, setRemoveWhiteSpace] = useState(true); // Default true for Box mode so blank spaces are automatically trimmed!
   const [interlockShiftX, setInterlockShiftX] = useState(0); // Shift for interlocking alignment
   const [interlockShiftY, setInterlockShiftY] = useState(0);
   const [orderQuantity, setOrderQuantity] = useState(1000);
 
   // ─── Box In-Between Gap Trimming (Horizontal & Vertical Spacing) ───────
-  const [boxGutterX, setBoxGutterX] = useState(0.25); // 0.25 mm margin in between boxes (die gap)
-  const [boxGutterY, setBoxGutterY] = useState(0.25); // 0.25 mm margin in between boxes (die gap)
-  const [boxGuttersLinked, setBoxGuttersLinked] = useState(false);
+  // Prepress packaging requirement: strictly Zero Gaps & Tight CAD Pack default (0.00 gap)
+  const [boxGutterX, setBoxGutterX] = useState(0); // 0.00 default for Zero Gaps
+  const [boxGutterY, setBoxGutterY] = useState(0); // 0.00 default for Zero Gaps
+  const [boxGuttersLinked, setBoxGuttersLinked] = useState(true);
 
   // ─── Box Artwork Trimming (Client File White Space Margins Removal) ─────
   const [trimTop, setTrimTop] = useState(0);       // in active packaging unit
@@ -350,9 +357,9 @@ export default function ImpositionSection({
   const [marginDetectionResult, setMarginDetectionResult] = useState(null);
 
   // ─── Sheet Dimensions (Raw Stock Paper) ─────────────────────────────────
-  const [sheetPreset, setSheetPreset] = useState('23×36"');
-  const [sheetWidth, setSheetWidth] = useState(584);
-  const [sheetHeight, setSheetHeight] = useState(914);
+  const [sheetPreset, setSheetPreset] = useState(initialSheetConfig?.name || '20×28"');
+  const [sheetWidth, setSheetWidth] = useState(initialSheetConfig?.sheetWidth || 508);
+  const [sheetHeight, setSheetHeight] = useState(initialSheetConfig?.sheetHeight || 711.2);
   const [customSheet, setCustomSheet] = useState(false);
 
   // ─── Book Dimensions (Finished Trim Size) ───────────────────────────────
@@ -379,42 +386,10 @@ export default function ImpositionSection({
   // Detected ArtBox / TrimBox / ContentBox from source PDF analysis
   const detectedArtBox = useMemo(() => {
     const media = analysisData?.pages?.[0]?.boxes?.media || { width: 1152, height: 792, x: 0, y: 0 };
-    const art = analysisData?.pages?.[0]?.boxes?.art;
-    if (art && (art.width < media.width - 2 || art.height < media.height - 2)) {
-      return {
-        x: art.x,
-        y: art.y,
-        width: art.width,
-        height: art.height,
-        leftMM: Math.max(0, Math.round(((art.x - (media.x || 0)) * 25.4 / 72) * 10) / 10),
-        bottomMM: Math.max(0, Math.round(((art.y - (media.y || 0)) * 25.4 / 72) * 10) / 10),
-        rightMM: Math.max(0, Math.round(((media.width - (art.x - (media.x || 0) + art.width)) * 25.4 / 72) * 10) / 10),
-        topMM: Math.max(0, Math.round(((media.height - (art.y - (media.y || 0) + art.height)) * 25.4 / 72) * 10) / 10),
-        widthMM: Math.max(0, Math.round((art.width * 25.4 / 72) * 10) / 10),
-        heightMM: Math.max(0, Math.round((art.height * 25.4 / 72) * 10) / 10),
-        source: 'ArtBox'
-      };
-    }
 
-    const trim = analysisData?.pages?.[0]?.boxes?.trim;
-    if (trim && (trim.width < media.width - 2 || trim.height < media.height - 2)) {
-      return {
-        x: trim.x,
-        y: trim.y,
-        width: trim.width,
-        height: trim.height,
-        leftMM: Math.max(0, Math.round(((trim.x - (media.x || 0)) * 25.4 / 72) * 10) / 10),
-        bottomMM: Math.max(0, Math.round(((trim.y - (media.y || 0)) * 25.4 / 72) * 10) / 10),
-        rightMM: Math.max(0, Math.round(((media.width - (trim.x - (media.x || 0) + trim.width)) * 25.4 / 72) * 10) / 10),
-        topMM: Math.max(0, Math.round(((media.height - (trim.y - (media.y || 0) + trim.height)) * 25.4 / 72) * 10) / 10),
-        widthMM: Math.max(0, Math.round((trim.width * 25.4 / 72) * 10) / 10),
-        heightMM: Math.max(0, Math.round((trim.height * 25.4 / 72) * 10) / 10),
-        source: 'TrimBox'
-      };
-    }
-
+    // Priority 1: Vector Content Bounding Box (exact carton content / dieline boundaries)
     const content = analysisData?.pages?.[0]?.boxes?.content || analysisData?.pages?.[0]?.contentBox;
-    if (content && (content.leftMM > 0 || content.bottomMM > 0 || content.rightMM > 0 || content.topMM > 0)) {
+    if (content && (content.leftMM > 0 || content.bottomMM > 0 || content.rightMM > 0 || content.topMM > 0 || content.widthMM > 0)) {
       return {
         x: content.x,
         y: content.y,
@@ -432,12 +407,78 @@ export default function ImpositionSection({
       };
     }
 
+    // Priority 2: ArtBox (if contentBox not available)
+    const art = analysisData?.pages?.[0]?.boxes?.art;
+    if (art && (art.width < media.width - 2 || art.height < media.height - 2)) {
+      return {
+        x: art.x,
+        y: art.y,
+        width: art.width,
+        height: art.height,
+        leftMM: Math.max(0, Math.round(((art.x - (media.x || 0)) * 25.4 / 72) * 10) / 10),
+        bottomMM: Math.max(0, Math.round(((art.y - (media.y || 0)) * 25.4 / 72) * 10) / 10),
+        rightMM: Math.max(0, Math.round(((media.width - (art.x - (media.x || 0) + art.width)) * 25.4 / 72) * 10) / 10),
+        topMM: Math.max(0, Math.round(((media.height - (art.y - (media.y || 0) + art.height)) * 25.4 / 72) * 10) / 10),
+        widthMM: Math.max(0, Math.round((art.width * 25.4 / 72) * 10) / 10),
+        heightMM: Math.max(0, Math.round((art.height * 25.4 / 72) * 10) / 10),
+        source: 'ArtBox'
+      };
+    }
+
+    // Priority 3: TrimBox
+    const trim = analysisData?.pages?.[0]?.boxes?.trim;
+    if (trim && (trim.width < media.width - 2 || trim.height < media.height - 2)) {
+      return {
+        x: trim.x,
+        y: trim.y,
+        width: trim.width,
+        height: trim.height,
+        leftMM: Math.max(0, Math.round(((trim.x - (media.x || 0)) * 25.4 / 72) * 10) / 10),
+        bottomMM: Math.max(0, Math.round(((trim.y - (media.y || 0)) * 25.4 / 72) * 10) / 10),
+        rightMM: Math.max(0, Math.round(((media.width - (trim.x - (media.x || 0) + trim.width)) * 25.4 / 72) * 10) / 10),
+        topMM: Math.max(0, Math.round(((media.height - (trim.y - (media.y || 0) + trim.height)) * 25.4 / 72) * 10) / 10),
+        widthMM: Math.max(0, Math.round((trim.width * 25.4 / 72) * 10) / 10),
+        heightMM: Math.max(0, Math.round((trim.height * 25.4 / 72) * 10) / 10),
+        source: 'TrimBox'
+      };
+    }
+
     return null;
   }, [analysisData]);
 
-  const [trimHeader, setTrimHeader] = useState(true); // Default true for Box mode so repeating title headers are trimmed off!
+  const [trimHeader, setTrimHeader] = useState(true); // Default true: automatically trim single-up title drawing header so 1-up title doesn't repeat on press sheet and cause huge gap!
   const [headerTrimHeight, setHeaderTrimHeight] = useState(0.75); // in packagingUnit (0.75 in or 20 mm)
   const [bookPreset, setBookPreset] = useState('AUTO');
+
+  // Dynamic synchronization when initialProductType or initialSheetConfig props arrive
+  useEffect(() => {
+    if (initialProductType) {
+      setPartMode(initialProductType);
+      if (initialProductType === 'BOX') {
+        setCropMarks(false);
+        setCameraMarks(false);
+        setColorBars(false);
+        setDielineOverlay(true);
+        setTrimHeader(true); // Default true for packaging box imposition
+      }
+    }
+  }, [initialProductType]);
+
+  useEffect(() => {
+    if (initialSheetConfig) {
+      if (initialSheetConfig.name) setSheetPreset(initialSheetConfig.name);
+      if (initialSheetConfig.sheetWidth) setSheetWidth(initialSheetConfig.sheetWidth);
+      if (initialSheetConfig.sheetHeight) setSheetHeight(initialSheetConfig.sheetHeight);
+      if (initialSheetConfig.cols) setBoxCols(initialSheetConfig.cols);
+      if (initialSheetConfig.rows) setBoxRows(initialSheetConfig.rows);
+      if (initialSheetConfig.sheetOrientation) setSheetOrientation(initialSheetConfig.sheetOrientation);
+      if (initialSheetConfig.isCustomFit || initialSheetConfig.name?.includes('Custom')) {
+        setCustomSheet(true);
+      } else {
+        setCustomSheet(false);
+      }
+    }
+  }, [initialSheetConfig]);
 
   // Auto-sync headerTrimHeight from detected content if headerHeightMM is available
   useEffect(() => {
@@ -447,28 +488,53 @@ export default function ImpositionSection({
     }
   }, [detectedArtBox, packagingUnit]);
 
-  // Auto-sync box trimming and header removal when detectedArtBox arrives
+  // Auto-sync box trimming and zero gaps when detectedArtBox arrives
   useEffect(() => {
     if (partMode === 'BOX' && detectedArtBox) {
-      if (detectedArtBox.dielineOnly) {
-        setTrimHeader(true);
-      }
-      if (trimTop === 0 && trimBottom === 0 && trimLeft === 0 && trimRight === 0) {
-        const isInch = packagingUnit === 'inch';
-        const factor = isInch ? 1 / 25.4 : 1;
-        const roundFactor = isInch ? 100 : 10;
-        const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
-        setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
-        setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
-        setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
-        let topVal = target.topMM;
-        if (trimHeader && !detectedArtBox.dielineOnly) {
-          topVal += (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
-        }
-        setTrimTop(Math.round(topVal * factor * roundFactor) / roundFactor);
-      }
+      const isInch = packagingUnit === 'inch';
+      const factor = isInch ? 1 / 25.4 : 1;
+      const roundFactor = isInch ? 100 : 10;
+      const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
+      setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
+      setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
+      setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
+      setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
+      setBoxGutterX(0);
+      setBoxGutterY(0);
+      setInterlockShiftX(0);
+      setInterlockShiftY(0);
+      setMarginTop(6.35);
+      setMarginBottom(6.35);
+      setMarginLeft(6.35);
+      setMarginRight(6.35);
     }
-  }, [partMode, detectedArtBox, packagingUnit]);
+  }, [partMode, detectedArtBox, packagingUnit, trimHeader]);
+
+  // Fallback to fetch detected margins from backend if analysisData did not include vector content bounding box
+  useEffect(() => {
+    if (partMode === 'BOX' && (!detectedArtBox || !detectedArtBox.leftMM) && jobId) {
+      detectArtworkMargins(jobId).then((res) => {
+        if (res.success && res.detected && res.margins) {
+          const target = (trimHeader && res.dielineMargins) ? res.dielineMargins : res.margins;
+          const isInch = packagingUnit === 'inch';
+          const factor = isInch ? 1 / 25.4 : 1;
+          const roundFactor = isInch ? 100 : 10;
+          setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
+          setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
+          setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
+          setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
+          setBoxGutterX(0);
+          setBoxGutterY(0);
+          setInterlockShiftX(0);
+          setInterlockShiftY(0);
+          setMarginTop(6.35);
+          setMarginBottom(6.35);
+          setMarginLeft(6.35);
+          setMarginRight(6.35);
+        }
+      }).catch(() => {});
+    }
+  }, [partMode, detectedArtBox, jobId, packagingUnit, trimHeader]);
 
   const [bookWidth, setBookWidth] = useState(148);
   const [bookHeight, setBookHeight] = useState(210);
@@ -489,10 +555,10 @@ export default function ImpositionSection({
   const [fitMode, setFitMode] = useState('NONE'); // 'NONE' | 'SCALE_TO_FIT'
 
   // ─── Sheet Margins (Independent 4-Sided Machine Margins) ────────────────
-  const [marginTop, setMarginTop] = useState(10);
-  const [marginBottom, setMarginBottom] = useState(10);
-  const [marginLeft, setMarginLeft] = useState(10);
-  const [marginRight, setMarginRight] = useState(10);
+  const [marginTop, setMarginTop] = useState(defaultMode === 'BOX' ? 6.35 : 10);
+  const [marginBottom, setMarginBottom] = useState(defaultMode === 'BOX' ? 6.35 : 10);
+  const [marginLeft, setMarginLeft] = useState(defaultMode === 'BOX' ? 6.35 : 10);
+  const [marginRight, setMarginRight] = useState(defaultMode === 'BOX' ? 6.35 : 10);
   const [marginsLinked, setMarginsLinked] = useState(false); // Independent by default as requested
 
   const [bleedTop, setBleedTop] = useState(3);
@@ -510,18 +576,18 @@ export default function ImpositionSection({
   const [printTechnology, setPrintTechnology] = useState('OFFSET'); // 'OFFSET' | 'DIGITAL'
 
   // ─── Prepress Production Marks ──────────────────────────────────────────
-  const [cropMarks, setCropMarks] = useState(true);
+  const [cropMarks, setCropMarks] = useState(defaultMode === 'BOX' ? false : true);
   const [cropMarkLength, setCropMarkLength] = useState(5);
   const [cropMarkOffset, setCropMarkOffset] = useState(3);
   // Note: Registration marks removed as requested (no longer used in modern prepress)
-  const [colorBars, setColorBars] = useState(true);
+  const [colorBars, setColorBars] = useState(defaultMode === 'BOX' ? false : true);
   const [cameraMarks, setCameraMarks] = useState(false);
   const [cameraMarkRadius, setCameraMarkRadius] = useState(3.5); // 3.5 mm radius circle
   const [cameraMarkOffset, setCameraMarkOffset] = useState(6); // mm sheet inset
   const [cameraMarkPositions, setCameraMarkPositions] = useState('CORNERS_AND_EDGES'); // 'CORNERS_AND_EDGES' | 'CORNERS'
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [jobSlug, setJobSlug] = useState(true);
-  const [foldMarks, setFoldMarks] = useState(true);
+  const [foldMarks, setFoldMarks] = useState(defaultMode === 'BOX' ? false : true);
   const [digitalBarcode, setDigitalBarcode] = useState(false);
 
   // Switch between Offset Press and Digital Press with smart presets
@@ -529,22 +595,22 @@ export default function ImpositionSection({
     setPrintTechnology(tech);
     if (tech === 'OFFSET') {
       if (['SRA3', 'A3+', 'A4'].includes(sheetPreset)) {
-        setSheetPreset('23×36"');
-        setSheetWidth(584);
-        setSheetHeight(914);
+        setSheetPreset(partMode === 'BOX' ? '20×28"' : '23×36"');
+        setSheetWidth(partMode === 'BOX' ? 508 : 584);
+        setSheetHeight(partMode === 'BOX' ? 711.2 : 914);
         setCustomSheet(false);
       }
-      setCropMarks(true);
-      setColorBars(true);
+      setCropMarks(partMode === 'BOX' ? false : true);
+      setColorBars(partMode === 'BOX' ? false : true);
       setJobSlug(true);
-      setCollatingMarks(true);
-      setFoldMarks(true);
+      setCollatingMarks(partMode === 'TEXT');
+      setFoldMarks(partMode === 'BOX' ? false : true);
       setDigitalBarcode(false);
       setCameraMarks(false);
-      setMarginTop(15); // Standard offset lead gripper allowance
-      setMarginBottom(10);
-      setMarginLeft(10);
-      setMarginRight(10);
+      setMarginTop(partMode === 'BOX' ? 6.35 : 15); // Standard offset lead gripper allowance
+      setMarginBottom(partMode === 'BOX' ? 6.35 : 10);
+      setMarginLeft(partMode === 'BOX' ? 6.35 : 10);
+      setMarginRight(partMode === 'BOX' ? 6.35 : 10);
     } else if (tech === 'DIGITAL') {
       if (['23×36"', '25×38"', '20×26"', 'B2'].includes(sheetPreset)) {
         setSheetPreset('SRA3');
@@ -720,7 +786,11 @@ export default function ImpositionSection({
     let flatW = 0;
     let flatH = 0;
 
-    if (boxStyle === 'RTE' || boxStyle === 'STE') {
+    if (detectedArtBox && (detectedArtBox.widthMM > 0 || detectedArtBox.heightMM > 0)) {
+      const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
+      flatW = isInch ? (target.widthMM / 25.4) : target.widthMM;
+      flatH = isInch ? (target.heightMM / 25.4) : target.heightMM;
+    } else if (boxStyle === 'RTE' || boxStyle === 'STE') {
       flatW = 2 * L + 2 * W + glue;
       flatH = H + 2 * W + tuck + (isInch ? 0.08 : 2);
     } else if (boxStyle === 'LOCK_BOTTOM') {
@@ -744,8 +814,10 @@ export default function ImpositionSection({
   // Effective Box Artwork Dimensions after Margin Trimming
   const effectiveBoxDimensions = useMemo(() => {
     const isInch = packagingUnit === 'inch';
-    const srcW = sourcePdfPageWidthMM || (isInch ? 16 * 25.4 : 406.4);
-    const srcH = sourcePdfPageHeightMM || (isInch ? 11 * 25.4 : 279.4);
+    const vpW = pageViewports?.[0]?.widthMM;
+    const vpH = pageViewports?.[0]?.heightMM;
+    const srcW = sourcePdfPageWidthMM || vpW || (isInch ? 16 * 25.4 : 406.4);
+    const srcH = sourcePdfPageHeightMM || vpH || (isInch ? 11 * 25.4 : 279.4);
     const tTop = Math.max(0, parseFloat(trimTop) || 0) * (isInch ? 25.4 : 1);
     const tBottom = Math.max(0, parseFloat(trimBottom) || 0) * (isInch ? 25.4 : 1);
     const tLeft = Math.max(0, parseFloat(trimLeft) || 0) * (isInch ? 25.4 : 1);
@@ -764,6 +836,9 @@ export default function ImpositionSection({
       }
       effW = Math.max(20, Math.round(target.widthMM * 10) / 10);
       effH = Math.max(20, Math.round(hMM * 10) / 10);
+    } else if (vpW && vpH) {
+      effW = Math.max(20, Math.round(vpW * 10) / 10);
+      effH = Math.max(20, Math.round(vpH * 10) / 10);
     } else {
       effW = Math.round((isInch ? boxFlatDimensions.flatW * 25.4 : boxFlatDimensions.flatW) * 10) / 10;
       effH = Math.round((isInch ? boxFlatDimensions.flatH * 25.4 : boxFlatDimensions.flatH) * 10) / 10;
@@ -771,7 +846,7 @@ export default function ImpositionSection({
     const savedH = Math.round((tTop + tBottom) * 10) / 10;
     const savedW = Math.round((tLeft + tRight) * 10) / 10;
     return { effW, effH, savedH, savedW, srcW, srcH };
-  }, [sourcePdfPageWidthMM, sourcePdfPageHeightMM, trimTop, trimBottom, trimLeft, trimRight, packagingUnit, boxFlatDimensions, removeWhiteSpace, detectedArtBox, trimHeader, headerTrimHeight]);
+  }, [sourcePdfPageWidthMM, sourcePdfPageHeightMM, trimTop, trimBottom, trimLeft, trimRight, packagingUnit, boxFlatDimensions, removeWhiteSpace, detectedArtBox, trimHeader, headerTrimHeight, pageViewports]);
 
   // Box Packaging Press Sheet Metrics
   const boxMetrics = useMemo(() => {
@@ -937,6 +1012,28 @@ export default function ImpositionSection({
     }
     setSheetWidth(w);
     setSheetHeight(h);
+
+    if (partMode === 'BOX') {
+      if (preset.name === '20×28"') {
+        setBoxCols(2);
+        setBoxRows(1);
+        const val = packagingUnit === 'inch' ? 0.197 : 5.0;
+        handleBoxGutterXChange(val);
+        handleBoxGutterYChange(val);
+      } else if (preset.name === '20×30"') {
+        setBoxCols(3);
+        setBoxRows(1);
+        const val = packagingUnit === 'inch' ? 0.197 : 5.0;
+        handleBoxGutterXChange(val);
+        handleBoxGutterYChange(val);
+      } else if (preset.name === '23×36"' || preset.name === '25×38"' || preset.name === '18×25"') {
+        setBoxCols(2);
+        setBoxRows(2);
+        const val = packagingUnit === 'inch' ? 0.098 : 2.5;
+        handleBoxGutterXChange(val);
+        handleBoxGutterYChange(val);
+      }
+    }
   };
 
   const handleSheetWidthChange = (val) => {
@@ -1079,6 +1176,39 @@ export default function ImpositionSection({
     if (boxGuttersLinked) setBoxGutterX(v);
   };
 
+  // ─── Unit Conversion Handler (inch <-> mm) ──────────────────────────────
+  const handlePackagingUnitToggle = (newUnit) => {
+    if (newUnit === packagingUnit) return;
+    if (newUnit === 'mm') {
+      setBoxGutterX(prev => Math.round((parseFloat(prev) * 25.4 || 5.0) * 10) / 10);
+      setBoxGutterY(prev => Math.round((parseFloat(prev) * 25.4 || 5.0) * 10) / 10);
+      setBoxLength(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setBoxWidth(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setBoxHeight(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setGlueTabWidth(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setTuckFlapHeight(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setTrimTop(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setTrimBottom(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setTrimLeft(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setTrimRight(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+      setHeaderTrimHeight(prev => Math.round((parseFloat(prev) * 25.4) * 10) / 10);
+    } else {
+      setBoxGutterX(prev => Math.round(((parseFloat(prev) / 25.4) || 0.197) * 1000) / 1000);
+      setBoxGutterY(prev => Math.round(((parseFloat(prev) / 25.4) || 0.197) * 1000) / 1000);
+      setBoxLength(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setBoxWidth(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setBoxHeight(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setGlueTabWidth(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setTuckFlapHeight(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setTrimTop(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setTrimBottom(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setTrimLeft(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setTrimRight(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+      setHeaderTrimHeight(prev => Math.round((parseFloat(prev) / 25.4) * 100) / 100);
+    }
+    setPackagingUnit(newUnit);
+  };
+
   // ─── Box Artwork Margin Trim Handlers ──────────────────────────────────
   const handleTrimTopChange = (val) => {
     const v = Math.max(0, parseFloat(val) || 0);
@@ -1148,16 +1278,9 @@ export default function ImpositionSection({
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // Top trim: if trimHeader is ON, trim to dielineOnly or add headerTrimHeight for images
-      if (trimHeader) {
-        if (targetBox.dielineOnly) {
-          // Vector keylines with detected top gap (e.g. Pluvya)
-          trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
-        } else {
-          // Images and raster artwork without vector gap: add header trim height
-          const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
-          trimmedTop = Math.round((targetBox.topMM + hMM) * factor * roundFactor) / roundFactor;
-        }
+      // Top trim: if trimHeader is ON and a detached header was detected (dielineOnly), trim to dielineOnly
+      if (trimHeader && targetBox.dielineOnly) {
+        trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
       } else {
         trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
       }
@@ -1369,8 +1492,16 @@ export default function ImpositionSection({
     const tBottomMM = (parseFloat(trimBottom) || 0) * trimFactor;
     const tLeftMM = (parseFloat(trimLeft) || 0) * trimFactor;
     const tRightMM = (parseFloat(trimRight) || 0) * trimFactor;
-    const gxMM = isBoxMode ? (isInchPackaging ? (parseFloat(boxGutterX) || 0) * 25.4 : (parseFloat(boxGutterX) || 0)) : parseFloat(gutterX || 0);
-    const gyMM = isBoxMode ? (isInchPackaging ? (parseFloat(boxGutterY) || 0) * 25.4 : (parseFloat(boxGutterY) || 0)) : parseFloat(gutterY || 0);
+    const gxMM = isBoxMode 
+      ? (isInchPackaging 
+          ? ((parseFloat(boxGutterX) != null && !isNaN(parseFloat(boxGutterX))) ? parseFloat(boxGutterX) * 25.4 : 0) 
+          : ((parseFloat(boxGutterX) != null && !isNaN(parseFloat(boxGutterX))) ? parseFloat(boxGutterX) : 0)) 
+      : parseFloat(gutterX || 0);
+    const gyMM = isBoxMode 
+      ? (isInchPackaging 
+          ? ((parseFloat(boxGutterY) != null && !isNaN(parseFloat(boxGutterY))) ? parseFloat(boxGutterY) * 25.4 : 0) 
+          : ((parseFloat(boxGutterY) != null && !isNaN(parseFloat(boxGutterY))) ? parseFloat(boxGutterY) : 0)) 
+      : parseFloat(gutterY || 0);
 
     const config = {
       productCategory: isBoxMode ? 'BOX' : 'BOOK',
@@ -1636,6 +1767,85 @@ export default function ImpositionSection({
         </div>
       </div>
 
+      {/* ─── Non-Tech Operator Quick-Bar: Press Sheet & UPS Yield Selector ─── */}
+      {(partMode === 'BOX' || partMode === 'COVER') && (
+        <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-[#101726] via-[#141F32] to-[#101726] border border-cyan-500/40 shadow-xl">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+              <Zap className="w-4 h-4 text-cyan-400" />
+              Sheet & UPS Yield:
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { name: '20×28"', label: '20×28"', ups: '2 UPS', badge: 'Min Sheet', w: 508, h: 711.2, cols: 2, rows: 1 },
+                { name: '20×30"', label: '20×30"', ups: '3 UPS', badge: 'High Yield', w: 508, h: 762, cols: 3, rows: 1 },
+                { name: '23×36"', label: '23×36"', ups: '4/6 UPS', w: 584, h: 914, cols: 2, rows: 2 },
+                { name: '28×40"', label: '28×40"', ups: '8 UPS', w: 711, h: 1016, cols: 4, rows: 2 },
+                { name: '18×25"', label: '18×25"', ups: '2/4 UPS', w: 635, h: 457.2, cols: 2, rows: 2 },
+              ].map((sz) => {
+                const isSelected = sheetPreset === sz.name;
+                return (
+                  <button
+                    key={sz.name}
+                    type="button"
+                    onClick={() => {
+                      setSheetPreset(sz.name);
+                      setSheetWidth(sz.w);
+                      setSheetHeight(sz.h);
+                      setSheetOrientation('LANDSCAPE');
+                      if (partMode === 'BOX') {
+                        setBoxCols(sz.cols);
+                        setBoxRows(sz.rows);
+                      }
+                      setCustomSheet(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                      isSelected
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-300 shadow-lg shadow-cyan-500/30'
+                        : 'bg-[#182338] text-slate-300 border-[#2A3A54] hover:border-cyan-500/50 hover:text-white'
+                    }`}
+                  >
+                    <span>{sz.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                      isSelected ? 'bg-slate-950 text-cyan-300' : 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                    }`}>
+                      {sz.ups}
+                    </span>
+                    {sz.badge && (
+                      <span className={`text-[9px] px-1 py-0.2 rounded ${
+                        isSelected ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-amber-500/20 text-amber-300'
+                      }`}>
+                        {sz.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 1-Click Generate Output Action */}
+          <button
+            type="button"
+            disabled={imposing}
+            onClick={handleRunImposition}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-bold font-mono text-xs sm:text-sm shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] shrink-0"
+          >
+            {imposing ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                <span>Generating Output...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
+                <span>Generate Imposition Output (1-Click)</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* ─── 3-Panel Industrial Prepress Studio Grid ──────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
 
@@ -1893,14 +2103,14 @@ export default function ImpositionSection({
                   <div className="flex items-center gap-1 bg-[#10141D] p-1 rounded-lg border border-[#233045]">
                     <button
                       type="button"
-                      onClick={() => setPackagingUnit('inch')}
+                      onClick={() => handlePackagingUnitToggle('inch')}
                       className={`px-2.5 py-0.5 text-[10px] font-mono font-bold rounded cursor-pointer transition-all ${packagingUnit === 'inch' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
                     >
                       inch (")
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPackagingUnit('mm')}
+                      onClick={() => handlePackagingUnitToggle('mm')}
                       className={`px-2.5 py-0.5 text-[10px] font-mono font-bold rounded cursor-pointer transition-all ${packagingUnit === 'mm' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-white'}`}
                     >
                       mm
@@ -2202,19 +2412,39 @@ export default function ImpositionSection({
                   Select your press sheet stock (e.g. 20×30", 20×26", 23×36") and apply standard 0.25" sheet margins on all 4 sides.
                 </p>
 
-                {/* Quick Packaging Sheet Presets */}
+                {/* Quick Packaging Sheet Presets with Green / Light Green / Light Yellow Visual Ranking */}
                 <div className="space-y-1.5">
-                  <span className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">Quick Sheet Presets:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">Quick Sheet Presets:</span>
+                    <span className="text-[8px] font-mono text-emerald-400 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 1st: Green • 2nd: Light Green • 3rd: Light Yellow
+                    </span>
+                  </div>
                   <div className="grid grid-cols-3 gap-1.5 font-mono text-[10px]">
                     {[
-                      { name: '20×30"', label: '20 × 30"', desc: '508 × 762 mm', w: 508, h: 762, badge: 'Popular' },
-                      { name: '20×26"', label: '20 × 26"', desc: '508 × 660 mm', w: 508, h: 660 },
+                      { name: '20×28"', label: '20 × 28"', desc: '508 × 711 mm • 2 UPS', w: 508, h: 711.2, rank: 1, rankBadge: '★ Best', rankColor: 'green' },
+                      { name: '20×30"', label: '20 × 30"', desc: '508 × 762 mm • 3 UPS', w: 508, h: 762, rank: 2, rankBadge: '2nd Best', rankColor: 'light-green' },
+                      { name: '25×38"', label: '25 × 38"', desc: '635 × 965 mm • 4 UPS', w: 635, h: 965, rank: 3, rankBadge: '3rd Best', rankColor: 'light-yellow' },
                       { name: '23×36"', label: '23 × 36"', desc: '584 × 914 mm', w: 584, h: 914 },
                       { name: '18×25"', label: '18 × 25"', desc: '457 × 635 mm', w: 635, h: 457.2 },
                       { name: '28×40"', label: '28 × 40"', desc: '711 × 1016 mm', w: 711, h: 1016 },
-                      { name: '30×40"', label: '30 × 40"', desc: '762 × 1016 mm', w: 762, h: 1016 },
                     ].map((sz) => {
                       const isSelected = sheetPreset === sz.name;
+                      const isR1 = sz.rank === 1;
+                      const isR2 = sz.rank === 2;
+                      const isR3 = sz.rank === 3;
+
+                      let btnBorder = 'border-[#233045] bg-[#141C2A] text-slate-300 hover:text-white hover:border-slate-500';
+                      if (isSelected) {
+                        btnBorder = 'bg-gradient-to-r from-cyan-950 to-blue-950 border-cyan-400 text-white font-bold shadow-md shadow-cyan-950/60 ring-1 ring-cyan-400';
+                      } else if (isR1) {
+                        btnBorder = 'border-emerald-500/80 bg-emerald-950/30 text-emerald-200 hover:border-emerald-400';
+                      } else if (isR2) {
+                        btnBorder = 'border-lime-500/70 bg-lime-950/25 text-lime-200 hover:border-lime-400';
+                      } else if (isR3) {
+                        btnBorder = 'border-yellow-400/70 bg-yellow-950/20 text-yellow-200 hover:border-yellow-300';
+                      }
+
                       return (
                         <button
                           key={sz.name}
@@ -2223,17 +2453,15 @@ export default function ImpositionSection({
                             const p = SHEET_PRESETS.find(x => x.name === sz.name) || sz;
                             handleSelectSheetPreset(p);
                           }}
-                          className={`p-1.5 rounded-lg border text-left transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-gradient-to-r from-cyan-950 to-blue-950 border-cyan-400 text-white font-bold shadow-md shadow-cyan-950/60'
-                              : 'bg-[#141C2A] border-[#233045] text-slate-300 hover:text-white hover:border-slate-500'
-                          }`}
+                          className={`p-1.5 rounded-lg border text-left transition-all cursor-pointer ${btnBorder}`}
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-bold">{sz.label}</span>
-                            {sz.badge && (
-                              <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                {sz.badge}
+                            {sz.rankBadge && (
+                              <span className={`text-[8px] px-1 py-0.2 rounded font-bold ${
+                                isR1 ? 'bg-emerald-500 text-slate-950' : isR2 ? 'bg-lime-400 text-slate-950' : 'bg-yellow-400 text-slate-950'
+                              }`}>
+                                {sz.rankBadge}
                               </span>
                             )}
                           </div>
@@ -2344,15 +2572,49 @@ export default function ImpositionSection({
                   <button
                     type="button"
                     onClick={() => {
-                      const val = packagingUnit === 'inch' ? 0.01 : 0.25;
+                      const val = packagingUnit === 'inch' ? 0.197 : 5.0;
                       handleBoxGutterXChange(val);
                       handleBoxGutterYChange(val);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-600/40 hover:bg-emerald-600/60 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-400 transition-all cursor-pointer shadow-sm flex items-center gap-1"
-                    title="Apply 0.25 mm standard die margin between boxes"
+                    className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
+                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.197 : 5.0)) < 0.01
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-emerald-500/30 font-extrabold'
+                        : 'bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border-emerald-600'
+                    }`}
+                    title="Strict 5.0 mm total space between adjacent ups (Standard for 2-Up)"
                   >
-                    <Sparkles className="w-3 h-3 text-emerald-300" />
-                    <span>{packagingUnit === 'inch' ? '0.01"' : '0.25 mm'} (Std Die Margin)</span>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{packagingUnit === 'inch' ? '0.197" (5.0 mm Gap - 2-Up)' : '5.0 mm Gap (Strict for 2-Up)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = packagingUnit === 'inch' ? 0.098 : 2.5;
+                      handleBoxGutterXChange(val);
+                      handleBoxGutterYChange(val);
+                    }}
+                    className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
+                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.098 : 2.5)) < 0.01
+                        ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-cyan-500/30 font-extrabold'
+                        : 'bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border-cyan-600'
+                    }`}
+                    title="Strict 2.5 mm uniform space between all adjacent ups (Standard for 4-Up)"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{packagingUnit === 'inch' ? '0.098" (2.5 mm Uniform - 4-Up)' : '2.5 mm Uniform Gap (Strict for 4-Up)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = packagingUnit === 'inch' ? 0.118 : 3.0;
+                      handleBoxGutterXChange(val);
+                      handleBoxGutterYChange(val);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
+                  >
+                    {packagingUnit === 'inch' ? '0.118" (3mm)' : '3.0 mm'} Tight
                   </button>
 
                   <button
@@ -2369,25 +2631,13 @@ export default function ImpositionSection({
                   <button
                     type="button"
                     onClick={() => {
-                      const val = packagingUnit === 'inch' ? 0.05 : 1.5;
+                      const val = packagingUnit === 'inch' ? 0.315 : 8.0;
                       handleBoxGutterXChange(val);
                       handleBoxGutterYChange(val);
                     }}
                     className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
                   >
-                    {packagingUnit === 'inch' ? '0.05"' : '1.5mm'} Tight
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const val = packagingUnit === 'inch' ? 0.125 : 3.0;
-                      handleBoxGutterXChange(val);
-                      handleBoxGutterYChange(val);
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
-                  >
-                    {packagingUnit === 'inch' ? '1/8"' : '3mm Standard'}
+                    {packagingUnit === 'inch' ? '0.315" (8mm)' : '8.0 mm'} Wide
                   </button>
 
                   <button
@@ -2405,13 +2655,22 @@ export default function ImpositionSection({
                   <button
                     type="button"
                     onClick={() => {
-                      const tuck = parseFloat(tuckFlapHeight) || (packagingUnit === 'inch' ? 1.5 : 15);
-                      handleBoxGutterYChange(-tuck);
+                      const isInch = packagingUnit === 'inch';
+                      const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+                      const clearance = isInch ? 0.197 : 5.0;
+                      const nestY = -Math.max(0, tuck - clearance);
+                      const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
+                      handleBoxGutterYChange(rounded);
                     }}
-                    className="px-2 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300 font-mono text-[10px] border border-cyan-700/60 transition-all cursor-pointer"
-                    title="Nests tuck flaps into opposing rows using negative row spacing"
+                    className={`px-2.5 py-1 rounded-lg font-mono text-[10px] border transition-all cursor-pointer shadow-sm flex items-center gap-1 ${
+                      boxGutterY < 0
+                        ? 'bg-indigo-600 text-white font-extrabold border-indigo-400 shadow-indigo-600/30'
+                        : 'bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 border-indigo-700'
+                    }`}
+                    title="Nests interlocking tuck flaps into opposing rows with exact 5.0 mm die clearance"
                   >
-                    -{parseFloat(tuckFlapHeight) || (packagingUnit === 'inch' ? 1.5 : 15)}{packagingUnit === 'inch' ? '"' : 'mm'} Flap Nesting
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Auto-Nest (5 mm Flap Clearance)</span>
                   </button>
                 </div>
 
@@ -2449,40 +2708,61 @@ export default function ImpositionSection({
                     <div className="flex items-center gap-1 pt-0.5 flex-wrap">
                       <button
                         type="button"
-                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.01 : 0.25)}
-                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterX === (packagingUnit === 'inch' ? 0.01 : 0.25) ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold shadow-sm' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
-                        }`}
-                        title="Standard 0.25 mm die margin"
-                      >
-                        {packagingUnit === 'inch' ? '0.01"' : '0.25mm'}
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleBoxGutterXChange(0)}
-                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterX === 0 ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        className={`text-[9px] font-mono px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                          boxGutterX === 0
+                            ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400 shadow-sm shadow-emerald-500/30'
+                            : 'bg-emerald-950/60 border-emerald-700 text-emerald-300 hover:text-white'
                         }`}
+                        title="Zero Gap between cartons (Touch / Butt-Cut)"
                       >
-                        0.00
+                        0.00 (Zero Gap)
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.05 : 1.5)}
+                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.197 : 5.0)}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterX === (packagingUnit === 'inch' ? 0.05 : 1.5) ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.197 : 5.0)) < 0.01
+                            ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
+                        title="Strict 5.0 mm space between products"
                       >
-                        {packagingUnit === 'inch' ? '0.05"' : '1.5mm'}
+                        {packagingUnit === 'inch' ? '5mm' : '5.0mm'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.125 : 3.0)}
+                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.098 : 2.5)}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterX === (packagingUnit === 'inch' ? 0.125 : 3.0) ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.098 : 2.5)) < 0.01
+                            ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                        title="2.5 mm spacing between products"
+                      >
+                        {packagingUnit === 'inch' ? '2.5mm' : '2.5mm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.118 : 3.0)}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                            ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
                       >
-                        {packagingUnit === 'inch' ? '1/8"' : '3mm'}
+                        {packagingUnit === 'inch' ? '3mm' : '3.0mm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBoxGutterXChange(packagingUnit === 'inch' ? 0.315 : 8.0)}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.315 : 8.0)) < 0.01
+                            ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {packagingUnit === 'inch' ? '8mm' : '8.0mm'}
                       </button>
                     </div>
                   </div>
@@ -2519,53 +2799,78 @@ export default function ImpositionSection({
                     <div className="flex items-center gap-1 pt-0.5 flex-wrap">
                       <button
                         type="button"
-                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.01 : 0.25)}
-                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY === (packagingUnit === 'inch' ? 0.01 : 0.25) ? 'bg-emerald-950 border-emerald-500 text-emerald-300 font-bold shadow-sm' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
-                        }`}
-                        title="Standard 0.25 mm die margin"
-                      >
-                        {packagingUnit === 'inch' ? '0.01"' : '0.25mm'}
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleBoxGutterYChange(0)}
-                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY === 0 ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        className={`text-[9px] font-mono px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                          boxGutterY === 0
+                            ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400 shadow-sm shadow-emerald-500/30'
+                            : 'bg-emerald-950/60 border-emerald-700 text-emerald-300 hover:text-white'
                         }`}
+                        title="Zero Gap between cartons (Touch / Butt-Cut)"
                       >
-                        0.00
+                        0.00 (Zero Gap)
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.05 : 1.5)}
+                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.197 : 5.0)}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY === (packagingUnit === 'inch' ? 0.05 : 1.5) ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.197 : 5.0)) < 0.01
+                            ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
+                        title="Strict 5.0 mm space between products"
                       >
-                        {packagingUnit === 'inch' ? '0.05"' : '1.5mm'}
+                        {packagingUnit === 'inch' ? '5mm' : '5.0mm'}
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.125 : 3.0)}
+                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.098 : 2.5)}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY === (packagingUnit === 'inch' ? 0.125 : 3.0) ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.098 : 2.5)) < 0.01
+                            ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                        title="2.5 mm spacing between products"
+                      >
+                        {packagingUnit === 'inch' ? '2.5mm' : '2.5mm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.118 : 3.0)}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                            ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
                       >
-                        {packagingUnit === 'inch' ? '1/8"' : '3mm'}
+                        {packagingUnit === 'inch' ? '3mm' : '3.0mm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBoxGutterYChange(packagingUnit === 'inch' ? 0.315 : 8.0)}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.315 : 8.0)) < 0.01
+                            ? 'bg-cyan-950 border-cyan-500 text-cyan-300 font-bold'
+                            : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {packagingUnit === 'inch' ? '8mm' : '8.0mm'}
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          const tuck = parseFloat(tuckFlapHeight) || (packagingUnit === 'inch' ? 1.5 : 15);
-                          handleBoxGutterYChange(-tuck);
+                          const isInch = packagingUnit === 'inch';
+                          const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+                          const clearance = isInch ? 0.197 : 5.0;
+                          const nestY = -Math.max(0, tuck - clearance);
+                          const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
+                          handleBoxGutterYChange(rounded);
                         }}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY < 0 ? 'bg-amber-950 border-amber-500 text-amber-300 font-bold' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          boxGutterY < 0 ? 'bg-indigo-600 text-white font-bold border-indigo-400' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
-                        title="Nest flaps into opposing rows"
+                        title="Nest interlocking flaps with exact 5.0 mm clearance"
                       >
-                        Nest Flaps
+                        Nest (5mm)
                       </button>
                     </div>
                   </div>
@@ -2574,15 +2879,15 @@ export default function ImpositionSection({
                 {/* Real-time Gap Status Badge */}
                 <div className="p-2 rounded-lg bg-[#141C2A] border border-[#1E293B] flex items-center justify-between text-[10px] font-mono">
                   <div className="flex items-center gap-1.5 text-slate-300">
-                    <span className="text-cyan-400 font-bold">↔ Col Gap:</span>
-                    <span className={boxGutterX === 0 ? "text-emerald-400 font-bold" : "text-white"}>
-                      {boxGutterX}{packagingUnit === 'inch' ? '"' : 'mm'} {boxGutterX === 0 && '(Zero / Butt-Cut)'}
+                    <span className="text-cyan-400 font-bold">↔ Total Gap Between 2 Ups:</span>
+                    <span className={boxGutterX === 0 ? "text-emerald-400 font-bold" : "text-emerald-300 font-bold"}>
+                      {boxGutterX}{packagingUnit === 'inch' ? '"' : ' mm'} {boxGutterX === 0 ? '(Touch / Butt-Cut)' : '(Strict Total Gap)'}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-300">
-                    <span className="text-cyan-400 font-bold">↕ Row Gap:</span>
-                    <span className={boxGutterY <= 0 ? "text-emerald-400 font-bold" : "text-white"}>
-                      {boxGutterY}{packagingUnit === 'inch' ? '"' : 'mm'} {boxGutterY === 0 ? '(Touch)' : (boxGutterY < 0 ? '(Nesting)' : '')}
+                    <span className="text-cyan-400 font-bold">↕ Total Row Gap:</span>
+                    <span className={boxGutterY <= 0 ? "text-emerald-400 font-bold" : "text-emerald-300 font-bold"}>
+                      {boxGutterY}{packagingUnit === 'inch' ? '"' : ' mm'} {boxGutterY === 0 ? '(Touch)' : (boxGutterY < 0 ? '(Nesting)' : '(Strict Total Gap)')}
                     </span>
                   </div>
                 </div>
@@ -3083,8 +3388,10 @@ export default function ImpositionSection({
             </div>
           </div>
 
-          {/* ─── 2. Finished Book Size Setup ──────────────────────────────── */}
-          <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl space-y-3.5">
+          {/* ─── 2. Finished Book Size Setup (Book Mode Only) ─────────────── */}
+          {partMode !== 'BOX' && (
+            <>
+              <div className="bg-[#141C2A] border border-[#233045] rounded-2xl p-4 shadow-xl space-y-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-400" />
@@ -3678,6 +3985,8 @@ export default function ImpositionSection({
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
@@ -3719,6 +4028,7 @@ export default function ImpositionSection({
               sheetIndex={signatureIndex}
               onSheetChange={(idx) => setSignatureIndex(idx)}
               thumbnails={thumbnails}
+              pageViewports={pageViewports}
               thumbnailsLoading={thumbnailsLoading}
               thumbnailsProgress={thumbnailsProgress}
               pageRotation={pageRotation}
@@ -3752,10 +4062,14 @@ export default function ImpositionSection({
                 trimBottom: parseFloat(trimBottom) || 0,
                 trimLeft: parseFloat(trimLeft) || 0,
                 trimRight: parseFloat(trimRight) || 0,
-                trimTopMM: (parseFloat(trimTop) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
-                trimBottomMM: (parseFloat(trimBottom) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
-                trimLeftMM: (parseFloat(trimLeft) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
-                trimRightMM: (parseFloat(trimRight) || 0) * (packagingUnit === 'inch' ? 25.4 : 1),
+                trimTopMM: (parseFloat(trimTop) || 0) > 0 ? (parseFloat(trimTop) * (packagingUnit === 'inch' ? 25.4 : 1)) : ((trimHeader && detectedArtBox?.dielineOnly?.topMM) || detectedArtBox?.topMM || 0),
+                trimBottomMM: (parseFloat(trimBottom) || 0) > 0 ? (parseFloat(trimBottom) * (packagingUnit === 'inch' ? 25.4 : 1)) : (detectedArtBox?.dielineOnly?.bottomMM || detectedArtBox?.bottomMM || 0),
+                trimLeftMM: (parseFloat(trimLeft) || 0) > 0 ? (parseFloat(trimLeft) * (packagingUnit === 'inch' ? 25.4 : 1)) : (detectedArtBox?.dielineOnly?.leftMM || detectedArtBox?.leftMM || 0),
+                trimRightMM: (parseFloat(trimRight) || 0) > 0 ? (parseFloat(trimRight) * (packagingUnit === 'inch' ? 25.4 : 1)) : (detectedArtBox?.dielineOnly?.rightMM || detectedArtBox?.rightMM || 0),
+                cropTopMM: (parseFloat(trimTop) || 0) > 0 ? (parseFloat(trimTop) * (packagingUnit === 'inch' ? 25.4 : 1)) : ((trimHeader && detectedArtBox?.dielineOnly?.topMM) || detectedArtBox?.topMM || 0),
+                cropBottomMM: (parseFloat(trimBottom) || 0) > 0 ? (parseFloat(trimBottom) * (packagingUnit === 'inch' ? 25.4 : 1)) : (detectedArtBox?.dielineOnly?.bottomMM || detectedArtBox?.bottomMM || 0),
+                cropLeftMM: (parseFloat(trimLeft) || 0) > 0 ? (parseFloat(trimLeft) * (packagingUnit === 'inch' ? 25.4 : 1)) : (detectedArtBox?.dielineOnly?.leftMM || detectedArtBox?.leftMM || 0),
+                cropRightMM: (parseFloat(trimRight) || 0) > 0 ? (parseFloat(trimRight) * (packagingUnit === 'inch' ? 25.4 : 1)) : (detectedArtBox?.dielineOnly?.rightMM || detectedArtBox?.rightMM || 0),
                 gutterX: partMode === 'BOX' ? (packagingUnit === 'inch' ? (parseFloat(boxGutterX) || 0) * 25.4 : (parseFloat(boxGutterX) || 0)) : gutterX,
                 gutterY: partMode === 'BOX' ? (packagingUnit === 'inch' ? (parseFloat(boxGutterY) || 0) * 25.4 : (parseFloat(boxGutterY) || 0)) : gutterY,
                 interlockMode,
@@ -3860,16 +4174,26 @@ export default function ImpositionSection({
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs font-mono text-slate-300">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={cropMarks} onChange={(e) => setCropMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                <span>Crop Marks</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={cameraMarks} onChange={(e) => setCameraMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                <span className="flex items-center gap-1 text-cyan-300 font-semibold">
-                  <Camera className="w-3.5 h-3.5" /> Camera Marks
-                </span>
-              </label>
+              {partMode !== 'BOX' && (
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={cropMarks} onChange={(e) => setCropMarks(e.target.checked)} className="rounded accent-cyan-400" />
+                    <span>Crop Marks</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={cameraMarks} onChange={(e) => setCameraMarks(e.target.checked)} className="rounded accent-cyan-400" />
+                    <span className="flex items-center gap-1 text-cyan-300 font-semibold">
+                      <Camera className="w-3.5 h-3.5" /> Camera Marks
+                    </span>
+                  </label>
+                </>
+              )}
+              {partMode === 'BOX' && (
+                <div className="col-span-2 p-2 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[10px] text-emerald-300 font-mono flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Packaging Mode: Camera & crop marks hidden (clean die-cut layout)</span>
+                </div>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={colorBars} onChange={(e) => setColorBars(e.target.checked)} className="rounded accent-cyan-400" />
                 <span className="text-amber-300 font-semibold">CMYK Bars</span>
@@ -3878,14 +4202,18 @@ export default function ImpositionSection({
                 <input type="checkbox" checked={jobSlug} onChange={(e) => setJobSlug(e.target.checked)} className="rounded accent-cyan-400" />
                 <span>Job Slug</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={foldMarks} onChange={(e) => setFoldMarks(e.target.checked)} className="rounded accent-cyan-400" />
-                <span>Fold & Knife Marks</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={digitalBarcode} onChange={(e) => setDigitalBarcode(e.target.checked)} className="rounded accent-cyan-400" />
-                <span className="text-emerald-300 font-semibold">Auto-Cut Barcode</span>
-              </label>
+              {partMode !== 'BOX' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={foldMarks} onChange={(e) => setFoldMarks(e.target.checked)} className="rounded accent-cyan-400" />
+                  <span>Fold & Knife Marks</span>
+                </label>
+              )}
+              {partMode !== 'BOX' && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={digitalBarcode} onChange={(e) => setDigitalBarcode(e.target.checked)} className="rounded accent-cyan-400" />
+                  <span className="text-emerald-300 font-semibold">Auto-Cut Barcode</span>
+                </label>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -4150,19 +4478,32 @@ export default function ImpositionSection({
             )}
           </button>
 
-          {/* Success banner */}
+          {/* Imposition Success Notification & Actions */}
           {result && (
-            <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-200 text-xs font-mono flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Imposition complete! Output ready.</span>
+            <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-cyan-950/80 border border-emerald-500/60 text-emerald-200 text-xs font-mono shadow-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span className="font-bold text-white text-sm">Imposition Complete!</span>
+                </div>
+                <span className="text-[10px] bg-emerald-900/80 text-emerald-300 px-2 py-0.5 rounded border border-emerald-700 font-bold">
+                  {parseFloat(boxGutterX) === 0 ? 'ZERO GAPS (BUTT-CUT)' : `${boxGutterX}${packagingUnit === 'inch' ? '"' : ' mm'} DIE GAP`}
+                </span>
               </div>
-              <button
-                onClick={onProceedToOutput}
-                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-all text-xs cursor-pointer"
-              >
-                Proceed →
-              </button>
+              <p className="text-[11px] text-slate-300 m-0">
+                Imposed press sheet generated with high-precision die clearance. Ready for proofing and platemaking.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={onProceedToOutput}
+                  className="flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-emerald-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-bold font-mono transition-all text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Inspect Imposed Sheet (Step 06)</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
 
