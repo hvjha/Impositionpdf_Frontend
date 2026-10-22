@@ -1628,7 +1628,7 @@ export default function SheetPreview({
                       width={cell.w}
                       height={cell.h}
                       fill={hasArtwork ? 'none' : '#F8FAFC'}
-                      stroke={hasArtwork && gy < 0 ? 'none' : '#94A3B8'}
+                      stroke={hasArtwork && boxLayout.gy < 0 ? 'none' : '#94A3B8'}
                       strokeWidth="0.3"
                     />
 
