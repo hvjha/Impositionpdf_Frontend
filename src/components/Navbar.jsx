@@ -6,7 +6,8 @@ import {
   LogOut,
   Zap,
   FileText,
-  Scissors
+  Scissors,
+  Layers
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -17,7 +18,8 @@ export default function Navbar({
   onOpenHistory,
   onLogout,
   onOpenKeylineStudio,
-  isKeylineStudioOpen
+  isKeylineStudioOpen,
+  onOpenGangModal
 }) {
   return (
     <header className="app-header">
@@ -82,6 +84,17 @@ export default function Navbar({
           >
             <Scissors className="w-3.5 h-3.5 text-fuchsia-400" />
             <span className="hidden sm:inline">Keyline Studio</span>
+          </button>
+
+          {/* Multi-File Gang Run Imposition Studio */}
+          <button
+            type="button"
+            onClick={onOpenGangModal}
+            className="header-btn hover:border-emerald-500/50 text-slate-300 hover:text-emerald-300"
+            title="Multi-File Gang Run & Combo Sheet Optimizer"
+          >
+            <Layers className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Gang Run (2-4 Files)</span>
           </button>
 
           <button onClick={onOpenHistory} className="header-btn" title="Archives & History">

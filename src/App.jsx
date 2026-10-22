@@ -15,6 +15,7 @@ const PdfCanvasViewer = lazy(() => import('./components/PdfCanvasViewer'));
 const LoginView = lazy(() => import('./components/LoginView'));
 const HistoryModal = lazy(() => import('./components/HistoryModal'));
 const KeylineStudioSection = lazy(() => import('./components/KeylineStudioSection'));
+const MultiFileGangModal = lazy(() => import('./components/MultiFileGangModal'));
 
 // Premium Skeleton Fallback Loader
 function PrepressSuspenseFallback({ label = "Loading workflow module..." }) {
@@ -48,6 +49,9 @@ export default function App() {
 
   // ─── Dual History Modal State ───────────────────────────────────────────
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // ─── Multi-File Gang Run Modal State ────────────────────────────────────
+  const [isGangModalOpen, setIsGangModalOpen] = useState(false);
 
   // ─── Independent Keyline Drawing Studio State ───────────────────────────
   const [isKeylineStudioOpen, setIsKeylineStudioOpen] = useState(false);
@@ -274,6 +278,7 @@ export default function App() {
         onLogout={handleLogout}
         onOpenKeylineStudio={() => setIsKeylineStudioOpen((prev) => !prev)}
         isKeylineStudioOpen={isKeylineStudioOpen}
+        onOpenGangModal={() => setIsGangModalOpen(true)}
       />
 
       {/* 3-Column Layout Body */}
@@ -384,6 +389,7 @@ export default function App() {
                     onOpenKeylineStudio={() => setIsKeylineStudioOpen(true)}
                     initialProductType={initialProductType}
                     initialSheetConfig={initialSheetConfig}
+                    onOpenGangModal={() => setIsGangModalOpen(true)}
                   />
                 )}
 
@@ -416,6 +422,31 @@ export default function App() {
             onLoadJob={handleLoadJob}
             onInspectOutput={handleInspectOutput}
             onReimposeJob={handleReimposeJob}
+          />
+        </Suspense>
+      )}
+
+      {/* Multi-File Gang Run Optimizer Modal (Lazy Loaded) */}
+      {isGangModalOpen && (
+        <Suspense fallback={<PrepressSuspenseFallback label="Loading Gang Run Optimizer..." />}>
+          <MultiFileGangModal
+            isOpen={isGangModalOpen}
+            onClose={() => setIsGangModalOpen(false)}
+            onApplyToStudio={(data) => {
+              addLog('SUCCESS', `Multi-File Gang Plan applied: ${data.cols}×${data.rows} on ${data.sheetPreset} (${data.sheetWidth}×${data.sheetHeight}mm) with 3.0mm gaps.`);
+              if (data.sheetPreset) {
+                setInitialSheetConfig({
+                  name: data.sheetPreset,
+                  width: data.sheetWidth,
+                  height: data.sheetHeight,
+                  cols: data.cols,
+                  rows: data.rows
+                });
+              }
+              setInitialProductType('BOX');
+              setMaxAllowedStep(prev => Math.max(prev, 5));
+              setCurrentStep(5);
+            }}
           />
         </Suspense>
       )}

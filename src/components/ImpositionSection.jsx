@@ -23,6 +23,7 @@ import {
   Compass,
   MoveHorizontal,
   MoveVertical,
+  Move,
   Maximize2,
   Settings2,
   SlidersHorizontal,
@@ -286,7 +287,8 @@ export default function ImpositionSection({
   customKeylines = [],
   onOpenKeylineStudio,
   initialProductType,
-  initialSheetConfig
+  initialSheetConfig,
+  onOpenGangModal = null
 }) {
   const activeOutputFileId = activeJob?.outputFileId;
   const pdfSource = useMemo(() => {
@@ -340,6 +342,9 @@ export default function ImpositionSection({
   const [interlockShiftX, setInterlockShiftX] = useState(0); // Shift for interlocking alignment
   const [interlockShiftY, setInterlockShiftY] = useState(0);
   const [orderQuantity, setOrderQuantity] = useState(1000);
+  const [layoutShiftX, setLayoutShiftX] = useState(0); // Interactive drag/nudge shift X (mm)
+  const [layoutShiftY, setLayoutShiftY] = useState(0); // Interactive drag/nudge shift Y (mm)
+  const [nudgeStep, setNudgeStep] = useState(1.0); // Nudge step in mm (0.5, 1.0, 5.0)
 
   // ─── Box In-Between Gap Trimming (Horizontal & Vertical Spacing) ───────
   // Prepress packaging requirement: strictly Zero Gaps & Tight CAD Pack default (0.00 gap)
@@ -1438,23 +1443,18 @@ export default function ImpositionSection({
     setTrimTop(trimmedTop);
     setTrimBottom(trimmedBot);
 
-    // Set 3.0 mm (0.118") horizontal gap between columns
+    // Set exact 3.0 mm (0.118") uniform gap overall in both horizontal and vertical directions
     const g3 = isInch ? 0.118 : 3.0;
     setBoxGutterX(g3);
+    setBoxGutterY(g3);
+    setBoxGuttersLinked(true);
 
-    // Calculate flap nesting for vertical gutter between interlocking rows
-    // Flaps nest into opposing shoulders with exact 3.0 mm (0.118 in) clearance
-    const tuckVal = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
-    const clearanceMM = 3.0; // 3mm clearance
-    const nestY_MM = -Math.max(0, tuckVal - clearanceMM);
-    const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
-    setBoxGutterY(nestY);
-    setBoxGuttersLinked(false);
-
-    // Set INTERLOCKING mode (Row 0 at 0°, Row 1 at 180° so bottom flaps face each other with tight 3mm gap)
+    // Set INTERLOCKING mode
     setInterlockMode('INTERLOCKING');
     setInterlockShiftX(0);
     setInterlockShiftY(0);
+    setLayoutShiftX(0);
+    setLayoutShiftY(0);
 
     // Apply 0.25" (6.35 mm) sheet margins all around
     const qMargin = 6.35;
@@ -1472,7 +1472,7 @@ export default function ImpositionSection({
     const c = Math.max(1, parseInt(boxCols, 10) || 2);
     const r = Math.max(1, parseInt(boxRows, 10) || 2);
     const reqW = c * effW + (c - 1) * 3.0 + qMargin * 2;
-    const reqH = r * effH + (r - 1) * nestY_MM + qMargin * 2;
+    const reqH = r * effH + (r - 1) * 3.0 + qMargin * 2;
     const curW = parseFloat(sheetWidth) || 0;
     const curH = parseFloat(sheetHeight) || 0;
     if (curW < reqW - 1 || curH < reqH - 1) {
@@ -1488,7 +1488,7 @@ export default function ImpositionSection({
 
     setMarginDetectionResult({
       success: true,
-      msg: `✨ Tight Fit (3mm Interlock) Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Flaps nested with 3.0 mm clearance & 3.0 mm column gap.`
+      msg: `✨ Strict 3.0 mm Uniform Gap Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Exact 3.0 mm space overall in both X (columns) and Y (rows).`
     });
     setDetectingMargins(false);
   };
@@ -1730,6 +1730,8 @@ export default function ImpositionSection({
         headerHeightMM: (parseFloat(headerTrimHeight) || (packagingUnit === 'inch' ? 0.75 : 20.0)) * (packagingUnit === 'inch' ? 25.4 : 1),
         interlockShiftX: parseFloat(interlockShiftX) || 0,
         interlockShiftY: parseFloat(interlockShiftY) || 0,
+        layoutShiftX: parseFloat(layoutShiftX) || 0,
+        layoutShiftY: parseFloat(layoutShiftY) || 0,
         gutterX: gxMM,
         gutterY: gyMM,
         orderQuantity: parseInt(orderQuantity, 10) || 1000
@@ -2231,9 +2233,22 @@ export default function ImpositionSection({
                   <Package className="w-4 h-4 text-emerald-400" />
                   <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">Box Packaging Studio</span>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
-                  N-Up Packaging
-                </span>
+                <div className="flex items-center gap-2">
+                  {onOpenGangModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenGangModal}
+                      className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-bold border border-emerald-400 flex items-center gap-1 shadow-sm cursor-pointer transition-all"
+                      title="Open Multi-File Gang Run Imposition Studio"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>📦 Multi-File Gang Optimizer</span>
+                    </button>
+                  )}
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
+                    N-Up Packaging
+                  </span>
+                </div>
               </div>
 
               {/* Box Style Presets */}
@@ -2308,10 +2323,12 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
-                      // Set 3.0 mm (0.118") horizontal gap and exact 3mm flap nesting
+                      // Set 3.0 mm (0.118") uniform gap overall in both X and Y
                       setBoxGutterX(0.118);
-                      setBoxGutterY(-1.38);
-                      setBoxGuttersLinked(false);
+                      setBoxGutterY(0.118);
+                      setBoxGuttersLinked(true);
+                      setLayoutShiftX(0);
+                      setLayoutShiftY(0);
                       // Apply 0.25" (6.35 mm) sheet margins
                       const qMargin = 6.35;
                       setMarginTop(qMargin);
@@ -2349,10 +2366,12 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
-                      // Set 3.0 mm (0.118") horizontal gap and exact 3mm flap nesting (-32mm / -1.26")
+                      // Set 3.0 mm (0.118") uniform gap overall in both X and Y
                       setBoxGutterX(0.118);
-                      setBoxGutterY(-1.26);
-                      setBoxGuttersLinked(false);
+                      setBoxGutterY(0.118);
+                      setBoxGuttersLinked(true);
+                      setLayoutShiftX(0);
+                      setLayoutShiftY(0);
                       // Apply 0.25" (6.35 mm) sheet margins
                       const qMargin = 6.35;
                       setMarginTop(qMargin);
@@ -2811,14 +2830,15 @@ export default function ImpositionSection({
                       setBoxGuttersLinked(true);
                     }}
                     className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
-                      boxGutterY > 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
-                        ? 'bg-blue-500 text-slate-950 border-blue-400 shadow-blue-500/30 font-extrabold'
-                        : 'bg-blue-950/70 hover:bg-blue-900/80 text-blue-300 border-blue-600'
+                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01 &&
+                      Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                        ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 text-white border-emerald-400 shadow-emerald-600/40 font-extrabold'
+                        : 'bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border-emerald-600'
                     }`}
-                    title="Strict 3.0 mm (0.118 in) uniform space between adjacent ups (Straight Grid)"
+                    title="Strict 3.0 mm (0.118 in) uniform gap between cartons in both X (columns) and Y (rows)"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{packagingUnit === 'inch' ? '↔️ 0.118" (3.0 mm Straight Grid)' : '↔️ 3.0 mm Gap (Straight Grid)'}</span>
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>{packagingUnit === 'inch' ? '📐 Exact 0.118" Gap Overall (X & Y)' : '📐 Exact 3.0 mm Gap Overall (Both X & Y)'}</span>
                   </button>
 
                   <button
@@ -3127,18 +3147,104 @@ export default function ImpositionSection({
                 </div>
 
                 {/* Real-time Gap Status Badge */}
-                <div className="p-2 rounded-lg bg-[#141C2A] border border-[#1E293B] flex items-center justify-between text-[10px] font-mono">
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <span className="text-cyan-400 font-bold">↔ Total Gap Between 2 Ups:</span>
-                    <span className={boxGutterX === 0 ? "text-emerald-400 font-bold" : "text-emerald-300 font-bold"}>
-                      {boxGutterX}{packagingUnit === 'inch' ? '"' : ' mm'} {boxGutterX === 0 ? '(Touch / Butt-Cut)' : '(Strict Total Gap)'}
-                    </span>
+                <div className="p-2.5 rounded-lg bg-[#141C2A] border border-[#1E293B] flex items-center justify-between text-[10px] font-mono flex-wrap gap-2">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <span className="text-cyan-400 font-bold">↔ Gap X: {boxGutterX}{packagingUnit === 'inch' ? '"' : ' mm'}</span>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-cyan-400 font-bold">↕ Gap Y: {boxGutterY}{packagingUnit === 'inch' ? '"' : ' mm'}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-300">
-                    <span className="text-cyan-400 font-bold">↕ Total Row Gap:</span>
-                    <span className={boxGutterY <= 0 ? "text-emerald-400 font-bold" : "text-emerald-300 font-bold"}>
-                      {boxGutterY}{packagingUnit === 'inch' ? '"' : ' mm'} {boxGutterY === 0 ? '(Touch)' : (boxGutterY < 0 ? '(Nesting)' : '(Strict Total Gap)')}
+                  {Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01 &&
+                   Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01 && (
+                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded text-[9px] font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      <span>✓ Exact 3.0 mm Uniform Gap Overall</span>
                     </span>
+                  )}
+                </div>
+
+                {/* ─── Interactive Layout Positioning & Nudge ─── */}
+                <div className="p-3 rounded-xl bg-[#141C2A] border border-cyan-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-mono font-bold text-white">
+                    <div className="flex items-center gap-1.5 text-cyan-300">
+                      <Move className="w-4 h-4 text-cyan-400" />
+                      <span>LAYOUT POSITION & DRAG NUDGE</span>
+                    </div>
+                    {(layoutShiftX !== 0 || layoutShiftY !== 0) && (
+                      <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded">
+                        Shift: X {layoutShiftX > 0 ? `+${layoutShiftX}` : layoutShiftX}mm | Y {layoutShiftY > 0 ? `+${layoutShiftY}` : layoutShiftY}mm
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[10px] font-mono text-slate-400 leading-tight">
+                    Click "✋ DRAG TO POSITION" on preview to drag cartons directly, or use D-pad arrows to nudge on press sheet.
+                  </p>
+
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    {/* D-Pad Arrow Controls */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setLayoutShiftX(prev => Math.round((prev - nudgeStep) * 10) / 10)}
+                        className="w-7 h-7 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
+                        title={`Nudge Left (-${nudgeStep}mm)`}
+                      >
+                        ⬅️
+                      </button>
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setLayoutShiftY(prev => Math.round((prev + nudgeStep) * 10) / 10)}
+                          className="w-7 h-6 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
+                          title={`Nudge Up (+${nudgeStep}mm)`}
+                        >
+                          ⬆️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLayoutShiftY(prev => Math.round((prev - nudgeStep) * 10) / 10)}
+                          className="w-7 h-6 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
+                          title={`Nudge Down (-${nudgeStep}mm)`}
+                        >
+                          ⬇️
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLayoutShiftX(prev => Math.round((prev + nudgeStep) * 10) / 10)}
+                        className="w-7 h-7 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
+                        title={`Nudge Right (+${nudgeStep}mm)`}
+                      >
+                        ➡️
+                      </button>
+                    </div>
+
+                    {/* Step size selector */}
+                    <div className="flex items-center gap-1 text-[10px] font-mono">
+                      <span className="text-slate-500">Step:</span>
+                      {[0.5, 1.0, 5.0].map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setNudgeStep(s)}
+                          className={`px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                            nudgeStep === s ? 'bg-cyan-600 text-white border-cyan-400 font-bold' : 'bg-[#10141D] text-slate-400 border-[#233045]'
+                          }`}
+                        >
+                          {s}mm
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Center Reset Button */}
+                    <button
+                      type="button"
+                      onClick={() => { setLayoutShiftX(0); setLayoutShiftY(0); }}
+                      className="px-2.5 py-1 rounded bg-[#10141D] hover:bg-[#1E293B] text-slate-300 hover:text-white border border-[#233045] text-[10px] font-mono font-bold transition-all cursor-pointer"
+                      title="Reset position to perfect sheet center"
+                    >
+                      🎯 Center (0, 0)
+                    </button>
                   </div>
                 </div>
               </div>
@@ -4352,7 +4458,15 @@ export default function ImpositionSection({
                 dielineOverlay,
                 removeWhiteSpace,
                 interlockShiftX,
-                interlockShiftY
+                interlockShiftY,
+                layoutShiftX,
+                layoutShiftY
+              }}
+              layoutShiftX={layoutShiftX}
+              layoutShiftY={layoutShiftY}
+              onLayoutShiftChange={(sx, sy) => {
+                setLayoutShiftX(sx);
+                setLayoutShiftY(sy);
               }}
             />
           </div>

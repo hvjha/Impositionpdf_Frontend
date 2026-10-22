@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Eye, EyeOff, BookOpen, Layers, Bookmark, Package } from 'lucide-react';
+import React, { useMemo, useState, useRef } from 'react';
+import { Eye, EyeOff, BookOpen, Layers, Bookmark, Package, Move } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * CIP4 / PREPS STANDARD FOLD PATTERN DEFINITIONS FOR FRONTEND PREVIEW
@@ -612,7 +612,10 @@ export default function SheetPreview({
     interlockMode: 'INTERLOCKING',
     dielineOverlay: true
   },
-  keylineElements = []
+  keylineElements = [],
+  layoutShiftX = 0,
+  layoutShiftY = 0,
+  onLayoutShiftChange = null
 }) {
   const [activeSide, setActiveSide] = useState('FRONT');
   const [showMargins, setShowMargins] = useState(true);
@@ -620,6 +623,10 @@ export default function SheetPreview({
   const [showBleed, setShowBleed] = useState(true);
   const [showArtwork, setShowArtwork] = useState(true);
   const [showCustomKeylines, setShowCustomKeylines] = useState(true);
+  const [isDragRepositionMode, setIsDragRepositionMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOrigin, setDragOrigin] = useState({ clientX: 0, clientY: 0, initialX: 0, initialY: 0 });
+  const svgRef = useRef(null);
 
   const isDuplex = workStyle !== 'SIMPLEX' && workStyle !== 'SINGLE_SIDED';
 
@@ -783,11 +790,13 @@ export default function SheetPreview({
     const cellW = isBox ? effW : Math.max(10, (printableW - gx * (c - 1)) / c);
     const cellH = isBox ? effH : Math.max(10, (printableH - gy * (r - 1)) / r);
 
-    // Center the complete box grid within printable area
+    // Center the complete box grid within printable area, plus any interactive drag/nudge offset
     const layoutW_calc = c * cellW + (c - 1) * gx;
     const layoutH_calc = r * cellH + (r - 1) * gy;
-    const startX = ml + Math.max(0, (printableW - layoutW_calc) / 2);
-    const startY = mt + Math.max(0, (printableH - layoutH_calc) / 2);
+    const customShiftX = parseFloat(layoutShiftX || boxParams?.layoutShiftX || 0);
+    const customShiftY = parseFloat(layoutShiftY || boxParams?.layoutShiftY || 0);
+    const startX = ml + Math.max(0, (printableW - layoutW_calc) / 2) + customShiftX;
+    const startY = mt + Math.max(0, (printableH - layoutH_calc) / 2) + customShiftY;
 
     const cells = [];
     const interlockMode = boxParams?.interlockMode || 'STANDARD';
@@ -1000,16 +1009,78 @@ export default function SheetPreview({
               {t.label}
             </button>
           ))}
+
+          {/* Interactive Drag & Reposition Toggle */}
+          {partMode === 'BOX' && (
+            <button
+              type="button"
+              onClick={() => setIsDragRepositionMode(prev => !prev)}
+              className={`px-2.5 py-1 text-[10px] font-mono font-bold rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
+                isDragRepositionMode
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                  : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-amber-300'
+              }`}
+              title="Click and drag directly on sheet preview to position cartons"
+            >
+              <Move className="w-3 h-3" />
+              <span>{isDragRepositionMode ? '✋ DRAGGING ACTIVE' : '✋ DRAG TO POSITION'}</span>
+            </button>
+          )}
+
+          {partMode === 'BOX' && (layoutShiftX !== 0 || layoutShiftY !== 0) && (
+            <div className="flex items-center gap-1.5 bg-[#141C2A] border border-amber-500/40 rounded-lg px-2 py-0.5 text-[9px] font-mono text-amber-300 shadow-sm">
+              <span>Shift: X {layoutShiftX > 0 ? `+${layoutShiftX}` : layoutShiftX}mm | Y {layoutShiftY > 0 ? `+${layoutShiftY}` : layoutShiftY}mm</span>
+              <button
+                type="button"
+                onClick={() => onLayoutShiftChange?.(0, 0)}
+                className="ml-1 text-slate-400 hover:text-white underline cursor-pointer"
+                title="Reset layout shift to center"
+              >
+                Reset
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ─── SVG Canvas ─────────────────────────────────────────────────── */}
       <div className="relative bg-[#2D3139] rounded-2xl overflow-hidden border border-[#3E4552] shadow-2xl">
+        {isDragRepositionMode && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-amber-500/90 text-slate-950 font-mono text-[10px] font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 pointer-events-none">
+            <Move className="w-3 h-3" />
+            <span>Click & Drag to reposition packaging cartons on press sheet</span>
+          </div>
+        )}
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${vbW} ${vbH}`}
-          className="w-full h-auto"
+          className={`w-full h-auto ${isDragRepositionMode ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
           style={{ maxHeight: '540px' }}
           xmlns="http://www.w3.org/2000/svg"
+          onMouseDown={(e) => {
+            if (!isDragRepositionMode) return;
+            setIsDragging(true);
+            setDragOrigin({
+              clientX: e.clientX,
+              clientY: e.clientY,
+              initialX: parseFloat(layoutShiftX || boxParams?.layoutShiftX || 0),
+              initialY: parseFloat(layoutShiftY || boxParams?.layoutShiftY || 0)
+            });
+          }}
+          onMouseMove={(e) => {
+            if (!isDragging || !isDragRepositionMode || !svgRef.current) return;
+            const rect = svgRef.current.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            const scaleX = vbW / rect.width;
+            const scaleY = vbH / rect.height;
+            const dx = (e.clientX - dragOrigin.clientX) * scaleX;
+            const dy = (e.clientY - dragOrigin.clientY) * scaleY;
+            const newX = Math.round((dragOrigin.initialX + dx) * 10) / 10;
+            const newY = Math.round((dragOrigin.initialY + dy) * 10) / 10;
+            onLayoutShiftChange?.(newX, newY);
+          }}
+          onMouseUp={() => setIsDragging(false)}
+          onMouseLeave={() => setIsDragging(false)}
         >
           {/* Press table background */}
           <rect x="0" y="0" width={vbW} height={vbH} fill="#23272F" />
