@@ -446,7 +446,7 @@ export default function ImpositionSection({
     return null;
   }, [analysisData]);
 
-  const [trimHeader, setTrimHeader] = useState(true); // Default true: automatically trim single-up title drawing header so 1-up title doesn't repeat on press sheet and cause huge gap!
+  const [trimHeader, setTrimHeader] = useState(false); // Default false: only trim header when explicitly requested by user
   const [headerTrimHeight, setHeaderTrimHeight] = useState(0.75); // in packagingUnit (0.75 in or 20 mm)
   const [bookPreset, setBookPreset] = useState('AUTO');
 
@@ -459,7 +459,6 @@ export default function ImpositionSection({
         setCameraMarks(false);
         setColorBars(false);
         setDielineOverlay(true);
-        setTrimHeader(true); // Default true for packaging box imposition
       }
     }
   }, [initialProductType]);
@@ -496,19 +495,13 @@ export default function ImpositionSection({
       const factor = isInch ? 1 / 25.4 : 1;
       const roundFactor = isInch ? 100 : 10;
 
-      // Auto-enable trimHeader whenever dielineOnly or headerHeightMM is detected
-      if (detectedArtBox.dielineOnly) {
-        setTrimHeader(true);
-      }
-
-      const target = detectedArtBox.dielineOnly ? detectedArtBox.dielineOnly : detectedArtBox;
+      const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
       setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
       setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
       setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
 
-      // If dielineOnly is present, use its exact topMM (which trims off title block).
-      // Otherwise, if trimHeader is active, trim topMM by detected/default headerTrimHeight
-      if (detectedArtBox.dielineOnly) {
+      // Only trim the top header if user explicitly enabled trimHeader!
+      if (trimHeader && detectedArtBox.dielineOnly) {
         setTrimTop(Math.round(detectedArtBox.dielineOnly.topMM * factor * roundFactor) / roundFactor);
       } else if (trimHeader) {
         const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
@@ -530,21 +523,18 @@ export default function ImpositionSection({
 
   // Fallback to fetch detected margins from backend if analysisData did not include vector content bounding box
   useEffect(() => {
-    if (partMode === 'BOX' && (!detectedArtBox || !detectedArtBox.leftMM || !detectedArtBox.dielineOnly) && jobId) {
+    if (partMode === 'BOX' && (!detectedArtBox || !detectedArtBox.leftMM) && jobId) {
       detectArtworkMargins(jobId).then((res) => {
         if (res.success && res.detected && res.margins) {
-          if (res.dielineMargins) {
-            setTrimHeader(true);
-          }
           const isInch = packagingUnit === 'inch';
           const factor = isInch ? 1 / 25.4 : 1;
           const roundFactor = isInch ? 100 : 10;
-          const target = res.dielineMargins ? res.dielineMargins : res.margins;
+          const target = (trimHeader && res.dielineMargins) ? res.dielineMargins : res.margins;
           setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
           setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
           setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
 
-          if (res.dielineMargins) {
+          if (trimHeader && res.dielineMargins) {
             setTrimTop(Math.round(res.dielineMargins.topMM * factor * roundFactor) / roundFactor);
           } else if (trimHeader) {
             const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
@@ -1332,20 +1322,19 @@ export default function ImpositionSection({
     let trimmedTop = 0, trimmedBot = 0, trimmedLeft = 0, trimmedRight = 0;
     const hMM_cad = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
 
-    // Auto-select trimHeader
-    setTrimHeader(true);
-
     if (targetBox) {
       // Bottom, left, right strictly match detected artwork footprint (bottom flaps preserved 100%)
       trimmedBot = Math.round(targetBox.bottomMM * factor * roundFactor) / roundFactor;
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // Top trim: if a detached header was detected (dielineOnly), trim to dielineOnly. Otherwise add header height.
-      if (targetBox.dielineOnly) {
+      // ONLY trim top header if user explicitly enabled trimHeader!
+      if (trimHeader && targetBox.dielineOnly) {
         trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
-      } else {
+      } else if (trimHeader) {
         trimmedTop = Math.round((targetBox.topMM + hMM_cad) * factor * roundFactor) / roundFactor;
+      } else {
+        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
       }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -1394,7 +1383,6 @@ export default function ImpositionSection({
     setDetectingMargins(true);
     setMarginDetectionResult(null);
     setRemoveWhiteSpace(true);
-    setTrimHeader(true); // Automatically ensure title header is trimmed
     const isInch = packagingUnit === 'inch';
     const roundFactor = isInch ? 100 : 10;
     const factor = isInch ? 1 / 25.4 : 1;
@@ -1424,11 +1412,13 @@ export default function ImpositionSection({
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // Top trim: if dielineOnly exists, use dielineOnly. Otherwise add header height.
-      if (targetBox.dielineOnly) {
+      // ONLY trim top header if user explicitly enabled trimHeader!
+      if (trimHeader && targetBox.dielineOnly) {
         trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
-      } else {
+      } else if (trimHeader) {
         trimmedTop = Math.round((targetBox.topMM + hMM) * factor * roundFactor) / roundFactor;
+      } else {
+        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
       }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -2308,7 +2298,6 @@ export default function ImpositionSection({
                       setBoxCols(2);
                       setBoxRows(2);
                       setInterlockMode('INTERLOCKING');
-                      setTrimHeader(true);
                       setDielineOverlay(true);
                       setSheetPreset('18×25"');
                       setSheetWidth(635);
@@ -2350,7 +2339,6 @@ export default function ImpositionSection({
                       setBoxCols(2);
                       setBoxRows(2);
                       setInterlockMode('INTERLOCKING');
-                      setTrimHeader(true);
                       setDielineOverlay(true);
                       setSheetPreset('20×30"');
                       setSheetWidth(508);
@@ -2802,7 +2790,6 @@ export default function ImpositionSection({
                       handleBoxGutterXChange(g3);
                       handleBoxGutterYChange(nestY);
                       setInterlockMode('INTERLOCKING');
-                      setTrimHeader(true);
                     }}
                     className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
                       boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
@@ -2906,7 +2893,6 @@ export default function ImpositionSection({
                       const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
                       handleBoxGutterYChange(rounded);
                       setInterlockMode('INTERLOCKING');
-                      setTrimHeader(true);
                     }}
                     className={`px-2.5 py-1 rounded-lg font-mono text-[10px] border transition-all cursor-pointer shadow-sm flex items-center gap-1 ${
                       boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.197 : 5.0)) < 0.01
@@ -3110,7 +3096,6 @@ export default function ImpositionSection({
                           const rounded = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
                           handleBoxGutterYChange(rounded);
                           setInterlockMode('INTERLOCKING');
-                          setTrimHeader(true);
                         }}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
                           boxGutterY < 0 ? 'bg-indigo-600 text-white font-bold border-indigo-400' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
@@ -3129,7 +3114,6 @@ export default function ImpositionSection({
                           const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
                           handleBoxGutterYChange(rounded);
                           setInterlockMode('INTERLOCKING');
-                          setTrimHeader(true);
                         }}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
                           boxGutterY < 0 ? 'bg-indigo-950 border-indigo-600 text-indigo-300' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
