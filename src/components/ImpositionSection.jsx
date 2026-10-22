@@ -1342,6 +1342,7 @@ export default function ImpositionSection({
     setDetectingMargins(true);
     setMarginDetectionResult(null);
     setRemoveWhiteSpace(true);
+    setTrimHeader(true);
     const isInch = packagingUnit === 'inch';
     const roundFactor = isInch ? 100 : 10;
     const factor = isInch ? 1 / 25.4 : 1;
@@ -1371,13 +1372,11 @@ export default function ImpositionSection({
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // ONLY trim top header if user explicitly enabled trimHeader!
-      if (trimHeader && targetBox.dielineOnly) {
+      // Use dielineOnly to trim off title blocks
+      if (targetBox.dielineOnly) {
         trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
-      } else if (trimHeader) {
-        trimmedTop = Math.round((targetBox.topMM + hMM_cad) * factor * roundFactor) / roundFactor;
       } else {
-        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
+        trimmedTop = Math.round((targetBox.topMM + hMM_cad) * factor * roundFactor) / roundFactor;
       }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -1397,9 +1396,18 @@ export default function ImpositionSection({
     setTrimTop(trimmedTop);
     setTrimBottom(trimmedBot);
 
-    // Set zero gap between individual box ups
+    // Set zero gap between individual box ups (butt-cut)
     setBoxGutterX(0);
-    setBoxGutterY(0);
+    if (interlockMode === 'INTERLOCKING' || interlockMode === 'DUTCH') {
+      const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+      const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+      const nest0 = isInch ? Math.round((-tuckMM / 25.4) * 100) / 100 : Math.round(-tuckMM * 10) / 10;
+      setBoxGutterY(nest0);
+      setBoxGuttersLinked(false);
+    } else {
+      setBoxGutterY(0);
+      setBoxGuttersLinked(true);
+    }
     setInterlockShiftX(0);
     setInterlockShiftY(0);
 
@@ -1426,6 +1434,7 @@ export default function ImpositionSection({
     setDetectingMargins(true);
     setMarginDetectionResult(null);
     setRemoveWhiteSpace(true);
+    setTrimHeader(true);
     const isInch = packagingUnit === 'inch';
     const roundFactor = isInch ? 100 : 10;
     const factor = isInch ? 1 / 25.4 : 1;
@@ -1455,13 +1464,11 @@ export default function ImpositionSection({
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // ONLY trim top header if user explicitly enabled trimHeader!
-      if (trimHeader && targetBox.dielineOnly) {
+      // Use dielineOnly to trim off title blocks
+      if (targetBox.dielineOnly) {
         trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
-      } else if (trimHeader) {
-        trimmedTop = Math.round((targetBox.topMM + hMM) * factor * roundFactor) / roundFactor;
       } else {
-        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
+        trimmedTop = Math.round((targetBox.topMM + hMM) * factor * roundFactor) / roundFactor;
       }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -1481,11 +1488,17 @@ export default function ImpositionSection({
     setTrimTop(trimmedTop);
     setTrimBottom(trimmedBot);
 
-    // Set exact 3.0 mm (0.118") uniform gap overall in both horizontal and vertical directions
+    // Calculate strict 3.0 mm (0.118") tuck flap nesting
+    const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+    const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+    const clearanceMM = 3.0; // exact 3.0 mm die clearance
+    const nestY_MM = -Math.max(0, tuckMM - clearanceMM);
+    const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
     const g3 = isInch ? 0.118 : 3.0;
+
     setBoxGutterX(g3);
-    setBoxGutterY(g3);
-    setBoxGuttersLinked(true);
+    setBoxGutterY(nestY);
+    setBoxGuttersLinked(false);
 
     // Set INTERLOCKING mode
     setInterlockMode('INTERLOCKING');
@@ -1506,11 +1519,11 @@ export default function ImpositionSection({
     const effWDisp = isInch ? `${(effW / 25.4).toFixed(2)}"` : `${effW} mm`;
     const effHDisp = isInch ? `${(effH / 25.4).toFixed(2)}"` : `${effH} mm`;
 
-    // Ensure sheet accommodates the 4-up 3mm layout
+    // Ensure sheet accommodates the 4-up 3mm nested layout
     const c = Math.max(1, parseInt(boxCols, 10) || 2);
     const r = Math.max(1, parseInt(boxRows, 10) || 2);
     const reqW = c * effW + (c - 1) * 3.0 + qMargin * 2;
-    const reqH = r * effH + (r - 1) * 3.0 + qMargin * 2;
+    const reqH = r * effH + (r - 1) * nestY_MM + qMargin * 2;
     const curW = parseFloat(sheetWidth) || 0;
     const curH = parseFloat(sheetHeight) || 0;
     if (curW < reqW - 1 || curH < reqH - 1) {
@@ -1526,7 +1539,7 @@ export default function ImpositionSection({
 
     setMarginDetectionResult({
       success: true,
-      msg: `✨ Strict 3.0 mm Uniform Gap Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Exact 3.0 mm space overall in both X (columns) and Y (rows).`
+      msg: `✨ Strict 3.0 mm Interlock Nesting Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Opposing tuck flaps interlock with exact 3.0 mm clearance.`
     });
     setDetectingMargins(false);
   };
@@ -2364,10 +2377,7 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
-                      // Set 3.0 mm (0.118") uniform gap overall in both X and Y
-                      setBoxGutterX(0.118);
-                      setBoxGutterY(0.118);
-                      setBoxGuttersLinked(true);
+                      setBoxGuttersLinked(false);
                       setLayoutShiftX(0);
                       setLayoutShiftY(0);
                       // Apply 0.25" (6.35 mm) sheet margins
@@ -2407,10 +2417,7 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
-                      // Set 3.0 mm (0.118") uniform gap overall in both X and Y
-                      setBoxGutterX(0.118);
-                      setBoxGutterY(0.118);
-                      setBoxGuttersLinked(true);
+                      setBoxGuttersLinked(false);
                       setLayoutShiftX(0);
                       setLayoutShiftY(0);
                       // Apply 0.25" (6.35 mm) sheet margins
@@ -2987,13 +2994,15 @@ export default function ImpositionSection({
                     type="button"
                     onClick={() => {
                       const isInch = packagingUnit === 'inch';
-                      const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 25);
-                      const clearance = isInch ? 0.118 : 3.0; // Strict 3.0 mm (0.118") die clearance
-                      const nestY = -Math.max(0, tuck - clearance);
-                      const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
-                      handleBoxGutterYChange(rounded);
-                      handleBoxGutterXChange(clearance);
+                      const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+                      const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+                      const clearanceMM = 3.0; // Strict 3.0 mm (0.118") die clearance
+                      const nestY_MM = -Math.max(0, tuckMM - clearanceMM);
+                      const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+                      handleBoxGutterYChange(nestY);
+                      handleBoxGutterXChange(isInch ? 0.118 : 3.0);
                       setInterlockMode('INTERLOCKING');
+                      setTrimHeader(true);
                     }}
                     className={`px-2.5 py-1 rounded-lg font-mono text-[10px] border transition-all cursor-pointer shadow-sm flex items-center gap-1 ${
                       boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
@@ -3192,11 +3201,14 @@ export default function ImpositionSection({
                         type="button"
                         onClick={() => {
                           const isInch = packagingUnit === 'inch';
-                          const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
-                          const nestY_MM = -Math.max(0, tuck - 3.0);
+                          const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+                          const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+                          const nestY_MM = -Math.max(0, tuckMM - 3.0);
                           const rounded = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
                           handleBoxGutterYChange(rounded);
+                          handleBoxGutterXChange(isInch ? 0.118 : 3.0);
                           setInterlockMode('INTERLOCKING');
+                          setTrimHeader(true);
                         }}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
                           boxGutterY < 0 ? 'bg-indigo-600 text-white font-bold border-indigo-400' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
@@ -3209,12 +3221,14 @@ export default function ImpositionSection({
                         type="button"
                         onClick={() => {
                           const isInch = packagingUnit === 'inch';
-                          const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
-                          const clearance = isInch ? 0.197 : 5.0;
-                          const nestY = -Math.max(0, tuck - clearance);
-                          const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
+                          const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+                          const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+                          const nestY_MM = -Math.max(0, tuckMM - 5.0);
+                          const rounded = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
                           handleBoxGutterYChange(rounded);
+                          handleBoxGutterXChange(isInch ? 0.197 : 5.0);
                           setInterlockMode('INTERLOCKING');
+                          setTrimHeader(true);
                         }}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
                           boxGutterY < 0 ? 'bg-indigo-950 border-indigo-600 text-indigo-300' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
