@@ -620,6 +620,8 @@ export default function SheetPreview({
   onUpOffsetChange = null,
   selectedUpIndex = null,
   onSelectUp = null,
+  onSwapUps = null,
+  onPageChangeForUp = null,
   pageAllocation = {},
   multiPageGang = false
 }) {
@@ -630,7 +632,8 @@ export default function SheetPreview({
   const [showArtwork, setShowArtwork] = useState(true);
   const [showCustomKeylines, setShowCustomKeylines] = useState(true);
   const [isDragRepositionMode, setIsDragRepositionMode] = useState(false);
-  const [draggingTarget, setDraggingTarget] = useState(null); // null | { type: 'UP', upIdx, clientX, clientY, initialX, initialY } | { type: 'LAYOUT', clientX, clientY, initialX, initialY }
+  const [draggingTarget, setDraggingTarget] = useState(null); // null | { type: 'UP', upIdx, clientX, clientY, initialX, initialY, baseX, baseY, cellW, cellH } | { type: 'LAYOUT', clientX, clientY, initialX, initialY }
+  const [hoverSwapTarget, setHoverSwapTarget] = useState(null);
   const svgRef = useRef(null);
 
   const isDuplex = workStyle !== 'SIMPLEX' && workStyle !== 'SINGLE_SIDED';
@@ -782,9 +785,9 @@ export default function SheetPreview({
     // Determine effective box dimensions (trimmed footprint - prioritizing exact trimmed dieline)
     const vpW = pageViewports?.[0]?.widthMM;
     const vpH = pageViewports?.[0]?.heightMM;
-    const effBoxW_mm = parseFloat(boxParams?.effectiveBoxWidth) || vpW || 
+    const effBoxW_mm = parseFloat(boxParams?.effectiveBoxWidth) || 
       (isInch ? (parseFloat(boxParams?.flatWidth) || 11.84) * 25.4 : (parseFloat(boxParams?.flatWidth) || 300));
-    const effBoxH_mm = parseFloat(boxParams?.effectiveBoxHeight) || vpH || 
+    const effBoxH_mm = parseFloat(boxParams?.effectiveBoxHeight) || 
       (isInch ? (parseFloat(boxParams?.flatHeight) || 9.37) * 25.4 : (parseFloat(boxParams?.flatHeight) || 238));
 
     const isRot = (parseInt(pageRotation, 10) || 0) === 90 || (parseInt(pageRotation, 10) || 0) === 270;
@@ -955,9 +958,46 @@ export default function SheetPreview({
       const dy = (e.clientY - draggingTarget.clientY) * scaleY;
 
       if (draggingTarget.type === 'UP') {
-        const newX = Math.round((draggingTarget.initialX + dx) * 10) / 10;
-        const newY = Math.round((draggingTarget.initialY + dy) * 10) / 10;
-        onUpOffsetChange?.(draggingTarget.upIdx, newX, newY);
+        const rawX = draggingTarget.initialX + dx;
+        const rawY = draggingTarget.initialY + dy;
+
+        // Restrict drag inside available sheet printable space
+        const ml = boxLayout.ml;
+        const mr = boxLayout.mr;
+        const mt = boxLayout.mt;
+        const mb = boxLayout.mb;
+        const minX = Math.min(ml, 0);
+        const maxX = Math.max(minX, boxLayout.sw - mr - draggingTarget.cellW);
+        const minY = Math.min(mt, 0);
+        const maxY = Math.max(minY, boxLayout.sh - mb - draggingTarget.cellH);
+
+        const targetAbsX = Math.max(minX, Math.min(maxX, draggingTarget.baseX + rawX));
+        const targetAbsY = Math.max(minY, Math.min(maxY, draggingTarget.baseY + rawY));
+        const clampedX = Math.round((targetAbsX - draggingTarget.baseX) * 10) / 10;
+        const clampedY = Math.round((targetAbsY - draggingTarget.baseY) * 10) / 10;
+
+        onUpOffsetChange?.(draggingTarget.upIdx, clampedX, clampedY);
+
+        // Check if dragging up overlaps another up's slot for position swap
+        const curCenterX = targetAbsX + draggingTarget.cellW / 2;
+        const curCenterY = targetAbsY + draggingTarget.cellH / 2;
+        let swapCandidate = null;
+
+        for (const cell of boxLayout.cells) {
+          if (cell.idx === draggingTarget.upIdx) continue;
+          const baseBX = cell.x - cell.upOffsetX;
+          const baseBY = cell.y - cell.upOffsetY;
+          if (
+            curCenterX >= baseBX &&
+            curCenterX <= baseBX + cell.w &&
+            curCenterY >= baseBY &&
+            curCenterY <= baseBY + cell.h
+          ) {
+            swapCandidate = cell.idx;
+            break;
+          }
+        }
+        setHoverSwapTarget(swapCandidate);
       } else if (draggingTarget.type === 'LAYOUT') {
         const newX = Math.round((draggingTarget.initialX + dx) * 10) / 10;
         const newY = Math.round((draggingTarget.initialY + dy) * 10) / 10;
@@ -966,7 +1006,11 @@ export default function SheetPreview({
     };
 
     const handleMouseUp = () => {
+      if (draggingTarget && draggingTarget.type === 'UP' && hoverSwapTarget !== null) {
+        onSwapUps?.(draggingTarget.upIdx, hoverSwapTarget);
+      }
       setDraggingTarget(null);
+      setHoverSwapTarget(null);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -975,7 +1019,7 @@ export default function SheetPreview({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingTarget, vbW, vbH, onUpOffsetChange, onLayoutShiftChange]);
+  }, [draggingTarget, hoverSwapTarget, vbW, vbH, boxLayout, onUpOffsetChange, onLayoutShiftChange, onSwapUps]);
 
   return (
     <div className="w-full">
@@ -1127,8 +1171,39 @@ export default function SheetPreview({
           )}
 
           {partMode === 'BOX' && selectedUpIndex !== null && (
-            <div className="flex items-center gap-1.5 bg-[#141C2A] border border-amber-500/40 rounded-lg px-2 py-0.5 text-[9px] font-mono text-amber-300 shadow-sm">
-              <span>Selected: UP #{selectedUpIndex + 1}</span>
+            <div className="flex items-center gap-2 bg-[#141C2A] border border-amber-500/50 rounded-lg px-2.5 py-1 text-[10px] font-mono text-amber-300 shadow-sm flex-wrap">
+              <span className="font-bold">UP #{selectedUpIndex + 1}</span>
+              {parseInt(totalPages, 10) > 1 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400">Page:</span>
+                  <select
+                    value={pageAllocation[selectedUpIndex] ?? (selectedUpIndex + 1)}
+                    onChange={(e) => onPageChangeForUp?.(selectedUpIndex, parseInt(e.target.value, 10))}
+                    className="bg-[#10141D] border border-slate-700 rounded px-1.5 py-0.5 text-white font-bold text-[10px]"
+                  >
+                    {Array.from({ length: parseInt(totalPages, 10) }, (_, pI) => (
+                      <option key={pI + 1} value={pI + 1}>Page {pI + 1}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400">Swap with:</span>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value !== '') {
+                      onSwapUps?.(selectedUpIndex, parseInt(e.target.value, 10));
+                    }
+                  }}
+                  className="bg-[#10141D] border border-cyan-800 rounded px-1.5 py-0.5 text-cyan-300 font-bold text-[10px]"
+                >
+                  <option value="">Choose UP...</option>
+                  {boxLayout.cells.filter(c => c.idx !== selectedUpIndex).map(c => (
+                    <option key={c.idx} value={c.idx}>UP #{c.idx + 1} (P.{c.page || 1})</option>
+                  ))}
+                </select>
+              </div>
               {(upOffsets?.[selectedUpIndex]?.x || upOffsets?.[selectedUpIndex]?.y) && (
                 <button
                   type="button"
@@ -1136,7 +1211,7 @@ export default function SheetPreview({
                   className="ml-1 text-slate-400 hover:text-white underline cursor-pointer"
                   title="Reset selected up offset"
                 >
-                  Reset
+                  Reset Offset
                 </button>
               )}
             </div>
@@ -1801,7 +1876,11 @@ export default function SheetPreview({
                         clientX: e.clientX,
                         clientY: e.clientY,
                         initialX: cell.upOffsetX || 0,
-                        initialY: cell.upOffsetY || 0
+                        initialY: cell.upOffsetY || 0,
+                        baseX: cell.x - (cell.upOffsetX || 0),
+                        baseY: cell.y - (cell.upOffsetY || 0),
+                        cellW: cell.w,
+                        cellH: cell.h
                       });
                     }}
                   >
@@ -1977,6 +2056,47 @@ export default function SheetPreview({
                         {(cell.upOffsetX !== 0 || cell.upOffsetY !== 0) ? ` (Shifted)` : ''}
                       </text>
                     </g>
+
+                    {/* Hover Swap Target Visual Cue (Drag to Swap) */}
+                    {hoverSwapTarget === cell.idx && (
+                      <g pointerEvents="none">
+                        <rect
+                          x={pad + cell.x}
+                          y={pad + cell.y}
+                          width={cell.w}
+                          height={cell.h}
+                          fill="#06B6D4"
+                          fillOpacity="0.25"
+                          stroke="#22D3EE"
+                          strokeWidth="1.6"
+                          strokeDasharray="4 2"
+                          rx="2"
+                        />
+                        <g transform={`translate(${pad + cell.x + cell.w / 2}, ${pad + cell.y + cell.h / 2})`}>
+                          <rect
+                            x="-58"
+                            y="-9"
+                            width="116"
+                            height="18"
+                            rx="4"
+                            fill="#083344"
+                            stroke="#22D3EE"
+                            strokeWidth="1.2"
+                          />
+                          <text
+                            x="0"
+                            y="3.5"
+                            textAnchor="middle"
+                            fontSize="5"
+                            fontFamily="monospace"
+                            fontWeight="bold"
+                            fill="#67E8F9"
+                          >
+                            {`⇄ DROP TO SWAP POSITIONS`}
+                          </text>
+                        </g>
+                      </g>
+                    )}
 
                     {/* Crop marks at cell corners (Suppressed in Box mode or when Key Die Lines are shown) */}
                     {cropMarks && !isBoxMode && !boxParams?.dielineOverlay && (

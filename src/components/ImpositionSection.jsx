@@ -875,9 +875,6 @@ export default function ImpositionSection({
       }
       effW = Math.max(20, Math.round(target.widthMM * 10) / 10);
       effH = Math.max(20, Math.round(hMM * 10) / 10);
-    } else if (vpW && vpH) {
-      effW = Math.max(20, Math.round(vpW * 10) / 10);
-      effH = Math.max(20, Math.round(vpH * 10) / 10);
     } else {
       effW = Math.round((isInch ? boxFlatDimensions.flatW * 25.4 : boxFlatDimensions.flatW) * 10) / 10;
       effH = Math.round((isInch ? boxFlatDimensions.flatH * 25.4 : boxFlatDimensions.flatH) * 10) / 10;
@@ -1242,6 +1239,33 @@ export default function ImpositionSection({
     const v = parseFloat(val) || 0;
     setBoxGutterY(v);
     if (boxGuttersLinked) setBoxGutterX(v);
+  };
+
+  // ─── Swap Ups & Page Allocation Handlers ──────────────────────────────
+  const handleSwapUps = (idxA, idxB) => {
+    if (idxA === idxB) return;
+    setPageAllocation(prev => {
+      const pageA = prev[idxA] !== undefined ? prev[idxA] : (idxA + 1);
+      const pageB = prev[idxB] !== undefined ? prev[idxB] : (idxB + 1);
+      return {
+        ...prev,
+        [idxA]: pageB,
+        [idxB]: pageA
+      };
+    });
+    setUpOffsets(prev => {
+      const next = { ...prev };
+      delete next[idxA];
+      delete next[idxB];
+      return next;
+    });
+  };
+
+  const handlePageChangeForUp = (upIdx, pageNum) => {
+    setPageAllocation(prev => ({
+      ...prev,
+      [upIdx]: pageNum
+    }));
   };
 
   // ─── Unit Conversion Handler (inch <-> mm) ──────────────────────────────
@@ -2513,7 +2537,25 @@ export default function ImpositionSection({
                   <label className="text-[10px] font-mono text-slate-400 block mb-1">Interlocking Row Nesting (Paper Saving)</label>
                   <select
                     value={interlockMode}
-                    onChange={(e) => setInterlockMode(e.target.value)}
+                    onChange={(e) => {
+                      const newMode = e.target.value;
+                      setInterlockMode(newMode);
+                      if (newMode === 'INTERLOCKING' || newMode === 'DUTCH') {
+                        if (boxGutterY >= 0) {
+                          const isInch = packagingUnit === 'inch';
+                          const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
+                          const nestY_MM = -Math.max(0, tuck - 3.0);
+                          const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+                          handleBoxGutterYChange(nestY);
+                          handleBoxGutterXChange(isInch ? 0.118 : 3.0);
+                          setBoxGuttersLinked(false);
+                        }
+                      } else if (newMode === 'STANDARD') {
+                        if (boxGutterY < 0) {
+                          handleBoxGutterYChange(packagingUnit === 'inch' ? 0.118 : 3.0);
+                        }
+                      }
+                    }}
                     className="w-full bg-[#141C2A] border border-[#233045] rounded-lg px-2 py-1 text-xs font-mono text-white"
                   >
                     <option value="INTERLOCKING">INTERLOCKING / DUTCH (Alternate row 180°)</option>
@@ -2818,22 +2860,26 @@ export default function ImpositionSection({
                     type="button"
                     onClick={() => {
                       const isInch = packagingUnit === 'inch';
+                      const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
+                      const clearance = 3.0; // exact 3mm clearance
+                      const nestY_MM = -Math.max(0, tuck - clearance);
+                      const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
                       const g3 = isInch ? 0.118 : 3.0;
                       handleBoxGutterXChange(g3);
-                      handleBoxGutterYChange(g3);
+                      handleBoxGutterYChange(nestY);
                       setInterlockShiftX(0);
                       setInterlockShiftY(0);
                       setInterlockMode('INTERLOCKING');
-                      setBoxGuttersLinked(true);
+                      setBoxGuttersLinked(false);
                     }}
                     className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
                       interlockMode === 'INTERLOCKING' &&
-                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01 &&
-                      Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                      boxGutterY < 0 &&
+                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
                         ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold border-indigo-400 shadow-indigo-600/40'
                         : 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border-indigo-600'
                     }`}
-                    title="Nests interlocking cartons with strict 3.0 mm die clearance overall between all rows and columns"
+                    title="Nests interlocking cartons with strict 3.0 mm die clearance overall between opposing tuck flaps"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
                     <span>{packagingUnit === 'inch' ? '🔄 Strict 0.118" Interlock (3mm Overall)' : '🔄 Strict 3.0 mm Interlock Gap Overall'}</span>
@@ -2897,7 +2943,18 @@ export default function ImpositionSection({
                   <div className="flex items-center gap-1 ml-auto">
                     <button
                       type="button"
-                      onClick={() => setInterlockMode('INTERLOCKING')}
+                      onClick={() => {
+                        setInterlockMode('INTERLOCKING');
+                        if (boxGutterY >= 0) {
+                          const isInch = packagingUnit === 'inch';
+                          const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
+                          const nestY_MM = -Math.max(0, tuck - 3.0);
+                          const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+                          handleBoxGutterYChange(nestY);
+                          handleBoxGutterXChange(isInch ? 0.118 : 3.0);
+                          setBoxGuttersLinked(false);
+                        }
+                      }}
                       className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold border transition-all cursor-pointer flex items-center gap-1 ${
                         interlockMode === 'INTERLOCKING'
                           ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm'
@@ -2909,7 +2966,12 @@ export default function ImpositionSection({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setInterlockMode('STANDARD')}
+                      onClick={() => {
+                        setInterlockMode('STANDARD');
+                        if (boxGutterY < 0) {
+                          handleBoxGutterYChange(packagingUnit === 'inch' ? 0.118 : 3.0);
+                        }
+                      }}
                       className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold border transition-all cursor-pointer flex items-center gap-1 ${
                         interlockMode === 'STANDARD'
                           ? 'bg-slate-700 border-slate-400 text-white shadow-sm'
@@ -4710,6 +4772,8 @@ export default function ImpositionSection({
               }}
               selectedUpIndex={selectedUpIndex}
               onSelectUp={(upIdx) => setSelectedUpIndex(upIdx)}
+              onSwapUps={handleSwapUps}
+              onPageChangeForUp={handlePageChangeForUp}
               pageAllocation={pageAllocation}
               multiPageGang={Boolean(multiPageGang && sourcePdfPageCount > 1)}
             />
