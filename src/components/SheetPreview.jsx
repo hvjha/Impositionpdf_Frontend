@@ -811,7 +811,11 @@ export default function SheetPreview({
         const idx = row * c + col;
         let rot = 0;
         if (interlockMode === 'INTERLOCKING' || interlockMode === 'DUTCH') {
-          rot = (row % 2 === 1) ? 180 : 0;
+          if (r === 1 && c > 1) {
+            rot = (col % 2 === 1) ? 180 : 0;
+          } else {
+            rot = (row % 2 === 1) ? 180 : 0;
+          }
         } else if (interlockMode === 'HEAD_TO_HEAD') {
           rot = (row % 2 === 0) ? 180 : 0;
         }
@@ -857,7 +861,7 @@ export default function SheetPreview({
           row,
           col,
           x: startX + col * (cellW + gx) + shiftX + upOffsetX,
-          y: startY + row * (cellH + gy) + shiftY + upOffsetY,
+          y: startY + row * (cellH + gy) - shiftY + upOffsetY,
           w: cellW,
           h: cellH,
           rot,
@@ -1949,15 +1953,15 @@ export default function SheetPreview({
                     {/* Up Indicator Floating Tag */}
                     <g transform={`translate(${pad + cell.x + cell.w / 2}, ${pad + cell.y + 6})`} pointerEvents="none">
                       <rect
-                        x="-38"
+                        x={cell.rot === 180 ? "-44" : "-38"}
                         y="-5.5"
-                        width="76"
+                        width={cell.rot === 180 ? "88" : "76"}
                         height="10.5"
                         rx="2.5"
-                        fill="#0B132B"
-                        fillOpacity="0.92"
-                        stroke={isCellSelected ? "#06B6D4" : "#475569"}
-                        strokeWidth="0.5"
+                        fill={cell.rot === 180 ? "#1E1B4B" : "#0B132B"}
+                        fillOpacity="0.95"
+                        stroke={cell.rot === 180 ? "#818CF8" : (isCellSelected ? "#06B6D4" : "#475569")}
+                        strokeWidth={cell.rot === 180 ? "0.8" : "0.5"}
                       />
                       <text
                         x="0"
@@ -1966,9 +1970,10 @@ export default function SheetPreview({
                         fontSize="3.8"
                         fontFamily="monospace"
                         fontWeight="bold"
-                        fill={isCellSelected ? "#38BDF8" : "#E2E8F0"}
+                        fill={cell.rot === 180 ? "#A5B4FC" : (isCellSelected ? "#38BDF8" : "#E2E8F0")}
                       >
                         UP #{cell.idx + 1} {cell.isSlotEmpty ? '• (Empty)' : (cell.page ? `• P.${cell.page}` : '')}
+                        {cell.rot === 180 ? ' 🔄 180°' : ''}
                         {(cell.upOffsetX !== 0 || cell.upOffsetY !== 0) ? ` (Shifted)` : ''}
                       </text>
                     </g>

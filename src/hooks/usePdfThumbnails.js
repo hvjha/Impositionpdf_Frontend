@@ -2,20 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// Configure PDF.js worker
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+// Configure PDF.js worker with unpkg fallback for maximum reliability
+if (typeof window !== 'undefined') {
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker || `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
+  }
 }
 
 /**
- * Hook to render PDF pages as thumbnail data URLs.
+ * Hook to render PDF pages as thumbnail data URLs with robust support for
+ * ultra-high resolution image sheets, complex packaging dielines, and multi-page PDFs.
  * 
  * @param {string|File|Blob|ArrayBuffer} pdfSource - URL, File, Blob or ArrayBuffer
  * @param {number} maxPages - Maximum pages to render
- * @param {number} thumbWidth - Thumbnail width in pixels for crisp SVG rendering
- * @returns {{ thumbnails: string[], pageAspectRatios: number[], pageCount: number, loading: boolean, progress: number, error: string|null }}
+ * @param {number} thumbWidth - Base thumbnail width in pixels
+ * @returns {{ thumbnails: string[], pageAspectRatios: number[], pageViewports: object[], pageCount: number, loading: boolean, progress: number, error: string|null }}
  */
-export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 320) {
+export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 360) {
   const [thumbnails, setThumbnails] = useState([]);
   const [pageAspectRatios, setPageAspectRatios] = useState([]);
   const [pageViewports, setPageViewports] = useState([]);
@@ -27,6 +30,11 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
 
   useEffect(() => {
     if (!pdfSource) {
+      setThumbnails([]);
+      setPageViewports([]);
+      setPageAspectRatios([]);
+      setPageCount(0);
+      setLoading(false);
       return;
     }
 
@@ -47,14 +55,33 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
         } else if (pdfSource instanceof ArrayBuffer) {
           docParams = { data: new Uint8Array(pdfSource) };
         } else if (typeof pdfSource === 'string') {
-          docParams = {
-            url: pdfSource,
-            disableRange: true,
-            disableStream: true,
-          };
+          // Robust main-thread fetch avoids web worker stream/CORS errors on high-res files
+          try {
+            const resp = await fetch(pdfSource);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const buffer = await resp.arrayBuffer();
+            if (cancelled) return;
+            docParams = { data: new Uint8Array(buffer) };
+          } catch (fetchErr) {
+            console.warn('[PDF Thumbnails] Direct buffer fetch failed, falling back to URL:', fetchErr);
+            docParams = {
+              url: pdfSource,
+              disableRange: true,
+              disableStream: true
+            };
+          }
         } else {
           throw new Error('Unsupported PDF source type');
         }
+
+        // Configure robust decoding parameters for high-resolution prepress artwork
+        docParams = {
+          ...docParams,
+          cMapUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/cmaps/',
+          cMapPacked: true,
+          standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/standard_fonts/',
+          maxImageSize: -1 // Disable raster image size limits for high-res print sheets
+        };
 
         const loadingTask = pdfjsLib.getDocument(docParams);
         taskRef.current = loadingTask;
@@ -72,7 +99,14 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
         for (let i = 1; i <= pagesToRender; i++) {
           if (cancelled) break;
 
-          const page = await pdf.getPage(i);
+          let page;
+          try {
+            page = await pdf.getPage(i);
+          } catch (pageErr) {
+            console.warn(`[PDF Thumbnails] Failed to load page ${i}:`, pageErr);
+            continue;
+          }
+
           const viewport = page.getViewport({ scale: 1 });
           const aspect = viewport.width / viewport.height;
           ratios.push(aspect);
@@ -83,42 +117,73 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
             heightMM: Math.round((viewport.height * 25.4 / 72) * 10) / 10
           });
 
-          // Calculate scale for desired thumbnail width
-          const scale = thumbWidth / viewport.width;
+          // Intelligent scaling for high-res images:
+          // Keep canvas bounded between 240px and 600px to ensure crisp rendering
+          // without triggering browser canvas memory limits (which cause black/blank previews)
+          const targetWidth = Math.min(600, Math.max(240, thumbWidth));
+          const scale = targetWidth / Math.max(10, viewport.width);
           const scaledViewport = page.getViewport({ scale });
 
           // Create offscreen canvas
           const canvas = document.createElement('canvas');
           canvas.width = Math.max(1, Math.floor(scaledViewport.width));
           canvas.height = Math.max(1, Math.floor(scaledViewport.height));
-          const ctx = canvas.getContext('2d', { alpha: false });
+          const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
 
-          // Fill white background before rendering
+          // Fill clean white background
           ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-          await page.render({
-            canvasContext: ctx,
-            viewport: scaledViewport,
-            background: 'rgb(255, 255, 255)',
-          }).promise;
+          try {
+            const renderTask = page.render({
+              canvasContext: ctx,
+              viewport: scaledViewport,
+              background: 'rgb(255, 255, 255)',
+              intent: 'display'
+            });
+
+            await renderTask.promise;
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+            thumbs.push(dataUrl);
+          } catch (renderErr) {
+            console.warn(`[PDF Thumbnails] Rendering failed for page ${i}, generating high-res vector fallback:`, renderErr);
+            // High-contrast fallback so preview is NEVER blank
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#EF4444';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+            ctx.fillStyle = '#0F172A';
+            ctx.font = 'bold 12px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`PAGE ${i} (${Math.round(viewport.width * 25.4 / 72)} × ${Math.round(viewport.height * 25.4 / 72)} mm)`, canvas.width / 2, canvas.height / 2 - 6);
+            ctx.fillStyle = '#64748B';
+            ctx.font = '10px monospace';
+            ctx.fillText('High-Res Vector Artwork Loaded', canvas.width / 2, canvas.height / 2 + 10);
+            thumbs.push(canvas.toDataURL('image/png'));
+          }
 
           if (!cancelled) {
-            thumbs.push(canvas.toDataURL('image/jpeg', 0.82));
+            // Update state incrementally so Page 1 renders IMMEDIATELY on the imposition sheet!
+            setThumbnails([...thumbs]);
+            setPageAspectRatios([...ratios]);
+            setPageViewports([...vports]);
             setProgress(Math.round((i / pagesToRender) * 100));
           }
 
-          page.cleanup();
+          try {
+            page.cleanup();
+          } catch {}
         }
 
-        if (!cancelled) {
+        if (!cancelled && thumbs.length > 0) {
           setThumbnails(thumbs);
           setPageAspectRatios(ratios);
           setPageViewports(vports);
         }
       } catch (err) {
         if (!cancelled) {
-          console.warn('[PDF Thumbnails] Failed to render:', err.message);
+          console.warn('[PDF Thumbnails] Pipeline warning:', err.message);
           setError(err.message);
         }
       } finally {

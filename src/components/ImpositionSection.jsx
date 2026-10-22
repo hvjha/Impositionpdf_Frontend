@@ -2925,22 +2925,23 @@ export default function ImpositionSection({
                     type="button"
                     onClick={() => {
                       const isInch = packagingUnit === 'inch';
-                      const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
-                      const clearance = isInch ? 0.197 : 5.0;
+                      const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 25);
+                      const clearance = isInch ? 0.118 : 3.0; // Strict 3.0 mm (0.118") die clearance
                       const nestY = -Math.max(0, tuck - clearance);
                       const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
                       handleBoxGutterYChange(rounded);
+                      handleBoxGutterXChange(clearance);
                       setInterlockMode('INTERLOCKING');
                     }}
                     className={`px-2.5 py-1 rounded-lg font-mono text-[10px] border transition-all cursor-pointer shadow-sm flex items-center gap-1 ${
-                      boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.197 : 5.0)) < 0.01
+                      boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
                         ? 'bg-indigo-600 text-white font-extrabold border-indigo-400 shadow-indigo-600/30'
                         : 'bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 border-indigo-700'
                     }`}
-                    title="Nests interlocking tuck flaps into opposing rows with exact 5.0 mm die clearance"
+                    title="Nests interlocking tuck flaps into opposing rows with exact 3.0 mm die clearance"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Auto-Nest (5 mm Flap Clearance)</span>
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>Auto-Nest (3.0 mm Flap Clearance)</span>
                   </button>
                 </div>
 
