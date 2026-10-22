@@ -995,6 +995,35 @@ export default function ImpositionSection({
     setCustomSheet(sheetToApply.isCustom);
   };
 
+  // Handler to set custom sheet size tightly wrapping the box layout with press margins
+  const handleFitSheetToLayout = (customMargins = null) => {
+    const isInch = packagingUnit === 'inch';
+    const c = Math.max(1, parseInt(boxCols, 10) || 2);
+    const r = Math.max(1, parseInt(boxRows, 10) || 2);
+    const effW = effectiveBoxDimensions.effW;
+    const effH = effectiveBoxDimensions.effH;
+    const gx = isInch ? (parseFloat(boxGutterX) || 0) * 25.4 : (parseFloat(boxGutterX) || 0);
+    const gy = isInch ? (parseFloat(boxGutterY) || 0) * 25.4 : (parseFloat(boxGutterY) || 0);
+    const ml = customMargins != null ? customMargins : (parseFloat(marginLeft) || 6.35);
+    const mr = customMargins != null ? customMargins : (parseFloat(marginRight) || 6.35);
+    const mt = customMargins != null ? customMargins : (parseFloat(marginTop) || 6.35);
+    const mb = customMargins != null ? customMargins : (parseFloat(marginBottom) || 6.35);
+
+    const layoutW = c * effW + (c - 1) * gx;
+    const layoutH = r * effH + (r - 1) * gy;
+    const fitW = Math.round((layoutW + ml + mr) * 10) / 10;
+    const fitH = Math.round((layoutH + mt + mb) * 10) / 10;
+
+    setSheetPreset('CUSTOM');
+    setCustomSheet(true);
+    setSheetWidth(fitW);
+    setSheetHeight(fitH);
+    setMarginDetectionResult({
+      success: true,
+      msg: `📐 Sheet custom-sized to tight layout: ${fitW} × ${fitH} mm (${(fitW / 25.4).toFixed(2)}" × ${(fitH / 25.4).toFixed(2)}")`
+    });
+  };
+
   // Handlers for Sheet Size
   const handleSelectSheetPreset = (preset) => {
     setSheetPreset(preset.name);
@@ -1323,6 +1352,110 @@ export default function ImpositionSection({
     setMarginDetectionResult({
       success: true,
       msg: `✨ Zero Gaps & Tight CAD Pack Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Set zero box gap & 0.25" sheet margins all around.`
+    });
+    setDetectingMargins(false);
+  };
+
+  const handleTightFit3mm = async () => {
+    setDetectingMargins(true);
+    setMarginDetectionResult(null);
+    setRemoveWhiteSpace(true);
+    const isInch = packagingUnit === 'inch';
+    const roundFactor = isInch ? 100 : 10;
+    const factor = isInch ? 1 / 25.4 : 1;
+
+    let targetBox = detectedArtBox;
+
+    if (!targetBox && jobId) {
+      try {
+        const res = await detectArtworkMargins(jobId);
+        if (res.success && res.detected && res.margins) {
+          targetBox = res.margins;
+          if (res.dielineMargins) {
+            targetBox.dielineOnly = res.dielineMargins;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to detect margins in tight fit 3mm:", err);
+      }
+    }
+
+    let trimmedTop = 0, trimmedBot = 0, trimmedLeft = 0, trimmedRight = 0;
+
+    if (targetBox) {
+      // Bottom, left, right strictly match detected artwork footprint (flaps preserved 100%)
+      trimmedBot = Math.round(targetBox.bottomMM * factor * roundFactor) / roundFactor;
+      trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
+      trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
+
+      // Top trim: if trimHeader is ON and dielineOnly exists, use dielineOnly
+      if (trimHeader && targetBox.dielineOnly) {
+        trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
+      } else {
+        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
+      }
+    } else {
+      const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
+      const srcH = isInch ? (sourcePdfPageHeightMM / 25.4) : sourcePdfPageHeightMM;
+      const flatW = boxFlatDimensions.flatW;
+      const flatH = boxFlatDimensions.flatH;
+      const diffW = Math.max(0, srcW - flatW);
+      const diffH = Math.max(0, srcH - flatH);
+      trimmedLeft = Math.round((diffW / 2) * roundFactor) / roundFactor;
+      trimmedRight = trimmedLeft;
+      trimmedTop = Math.round((diffH / 2) * roundFactor) / roundFactor;
+      trimmedBot = trimmedTop;
+    }
+
+    setTrimLeft(trimmedLeft);
+    setTrimRight(trimmedRight);
+    setTrimTop(trimmedTop);
+    setTrimBottom(trimmedBot);
+
+    // Set 3.0 mm (0.118") gap between individual box ups
+    const g3 = isInch ? 0.118 : 3.0;
+    setBoxGutterX(g3);
+    setBoxGutterY(g3);
+    setBoxGuttersLinked(true);
+    setInterlockShiftX(0);
+    setInterlockShiftY(0);
+
+    // Set INTERLOCKING mode (Row 0 at 0°, Row 1 at 180° so bottom flaps face each other with tight 3mm gap)
+    setInterlockMode('INTERLOCKING');
+
+    // Apply 0.25" (6.35 mm) sheet margins all around
+    const qMargin = 6.35;
+    setMarginTop(qMargin);
+    setMarginBottom(qMargin);
+    setMarginLeft(qMargin);
+    setMarginRight(qMargin);
+
+    const effW = Math.max(1, Math.round((sourcePdfPageWidthMM - (trimmedLeft + trimmedRight) * (isInch ? 25.4 : 1)) * 10) / 10);
+    const effH = Math.max(1, Math.round((sourcePdfPageHeightMM - (trimmedTop + trimmedBot) * (isInch ? 25.4 : 1)) * 10) / 10);
+    const effWDisp = isInch ? `${(effW / 25.4).toFixed(2)}"` : `${effW} mm`;
+    const effHDisp = isInch ? `${(effH / 25.4).toFixed(2)}"` : `${effH} mm`;
+
+    // Ensure sheet accommodates the 4-up 3mm layout
+    const c = Math.max(1, parseInt(boxCols, 10) || 2);
+    const r = Math.max(1, parseInt(boxRows, 10) || 2);
+    const reqW = c * effW + (c - 1) * 3.0 + qMargin * 2;
+    const reqH = r * effH + (r - 1) * 3.0 + qMargin * 2;
+    const curW = parseFloat(sheetWidth) || 0;
+    const curH = parseFloat(sheetHeight) || 0;
+    if (curW < reqW - 1 || curH < reqH - 1) {
+      const best = findMinimumSheetSize(reqW, reqH, sheetOrientation);
+      if (best) {
+        setSheetPreset(best.name);
+        setSheetWidth(best.width);
+        setSheetHeight(best.height);
+        setSheetOrientation(best.orientation);
+        setCustomSheet(best.isCustom);
+      }
+    }
+
+    setMarginDetectionResult({
+      success: true,
+      msg: `✨ Tight Fit (3mm Interlock) Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Set 3.0 mm in-between gap & 180° interlocking rows.`
     });
     setDetectingMargins(false);
   };
@@ -2142,12 +2275,17 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
+                      // Set 3.0 mm (0.118") gap
+                      setBoxGutterX(0.118);
+                      setBoxGutterY(0.118);
+                      setBoxGuttersLinked(true);
                       // Apply 0.25" (6.35 mm) sheet margins
                       const qMargin = 6.35;
                       setMarginTop(qMargin);
                       setMarginBottom(qMargin);
                       setMarginLeft(qMargin);
                       setMarginRight(qMargin);
+                      handleTightFit3mm();
                     }}
                     className="w-full py-1.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600/30 to-cyan-600/30 border border-emerald-500/50 hover:border-emerald-400 text-emerald-300 hover:text-white text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
                   >
@@ -2612,9 +2750,15 @@ export default function ImpositionSection({
                       handleBoxGutterXChange(val);
                       handleBoxGutterYChange(val);
                     }}
-                    className="px-2 py-1 rounded-lg bg-[#141C2A] hover:bg-[#1E293B] text-slate-300 font-mono text-[10px] border border-[#233045] transition-all cursor-pointer"
+                    className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
+                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                        ? 'bg-blue-500 text-slate-950 border-blue-400 shadow-blue-500/30 font-extrabold'
+                        : 'bg-blue-950/70 hover:bg-blue-900/80 text-blue-300 border-blue-600'
+                    }`}
+                    title="Strict 3.0 mm (0.118 in) uniform space between adjacent ups (Tight Fit Interlock)"
                   >
-                    {packagingUnit === 'inch' ? '0.118" (3mm)' : '3.0 mm'} Tight
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{packagingUnit === 'inch' ? '0.118" (3.0 mm Gap - Tight Fit)' : '3.0 mm Gap (Tight Fit)'}</span>
                   </button>
 
                   <button
@@ -2651,6 +2795,33 @@ export default function ImpositionSection({
                   >
                     {packagingUnit === 'inch' ? '1/4"' : '6mm Wide'}
                   </button>
+
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => setInterlockMode('INTERLOCKING')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                        interlockMode === 'INTERLOCKING'
+                          ? 'bg-indigo-600 border-indigo-400 text-white shadow-sm'
+                          : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                      }`}
+                      title="180° alternating rows (Dutch) for tight flap interlocking"
+                    >
+                      <span>🔄 180° Interlock</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInterlockMode('STANDARD')}
+                      className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                        interlockMode === 'STANDARD'
+                          ? 'bg-slate-700 border-slate-400 text-white shadow-sm'
+                          : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-white'
+                      }`}
+                      title="0° all ups uniform straight"
+                    >
+                      <span>⬆️ 0° Uniform</span>
+                    </button>
+                  </div>
 
                   <button
                     type="button"
@@ -2923,6 +3094,17 @@ export default function ImpositionSection({
 
                 {/* Quick Presets Bar */}
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleTightFit3mm}
+                    disabled={detectingMargins}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-mono text-[11px] font-bold flex items-center gap-1.5 shadow-md shadow-blue-950/50 transition-all cursor-pointer disabled:opacity-50"
+                    title="Tight fit content, set 3.0 mm (0.118 in) in-between gap, 180° interlocking alternating rows, and 0.25 in sheet margins"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
+                    <span>{detectingMargins ? 'Fitting...' : '✨ Tight Fit (3mm Interlock)'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleTightenCadPack}
@@ -3204,6 +3386,21 @@ export default function ImpositionSection({
                 </span>
                 <span className="px-2 py-0.5 rounded bg-black/40 border border-white/10 text-[10px] text-cyan-200">
                   {minSheetNeeded.bestSheet.name} ({minSheetNeeded.bestSheet.width} × {minSheetNeeded.bestSheet.height} mm)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleFitSheetToLayout()}
+                className="w-full py-1.5 px-3 rounded-xl border border-cyan-800/60 bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 text-[11px] font-mono font-bold flex items-center justify-between transition-all cursor-pointer shadow-sm"
+                title="Sets custom sheet dimensions to tightly enclose the layout with press margins"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Fit Custom Sheet to Layout</span>
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Exact Tight Footprint
                 </span>
               </button>
 
