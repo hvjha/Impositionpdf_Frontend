@@ -345,11 +345,15 @@ export default function ImpositionSection({
   const [layoutShiftX, setLayoutShiftX] = useState(0); // Interactive drag/nudge shift X (mm)
   const [layoutShiftY, setLayoutShiftY] = useState(0); // Interactive drag/nudge shift Y (mm)
   const [nudgeStep, setNudgeStep] = useState(1.0); // Nudge step in mm (0.5, 1.0, 5.0)
+  const [upOffsets, setUpOffsets] = useState({}); // { [upIdx]: { x: number, y: number } }
+  const [selectedUpIndex, setSelectedUpIndex] = useState(0); // 0 (UP #1) by default or null
+  const [multiPageGang, setMultiPageGang] = useState(true); // Default true when multi-page PDF is loaded
+  const [pageAllocation, setPageAllocation] = useState({}); // { [upIdx]: number }
 
   // ─── Box In-Between Gap Trimming (Horizontal & Vertical Spacing) ───────
   // Prepress packaging requirement: strictly Zero Gaps & Tight CAD Pack default (0.00 gap)
-  const [boxGutterX, setBoxGutterX] = useState(0); // 0.00 default for Zero Gaps
-  const [boxGutterY, setBoxGutterY] = useState(0); // 0.00 default for Zero Gaps
+  const [boxGutterX, setBoxGutterX] = useState(3.0); // 3.0 mm default for standard die clearance
+  const [boxGutterY, setBoxGutterY] = useState(3.0); // 3.0 mm default for standard die clearance
   const [boxGuttersLinked, setBoxGuttersLinked] = useState(true);
 
   // ─── Box Artwork Trimming (Client File White Space Margins Removal) ─────
@@ -475,6 +479,10 @@ export default function ImpositionSection({
       if (initialSheetConfig.sheetHeight) setSheetHeight(initialSheetConfig.sheetHeight);
       if (initialSheetConfig.cols) setBoxCols(initialSheetConfig.cols);
       if (initialSheetConfig.rows) setBoxRows(initialSheetConfig.rows);
+      if (initialSheetConfig.gapX !== undefined) setBoxGutterX(initialSheetConfig.gapX);
+      if (initialSheetConfig.gapY !== undefined) setBoxGutterY(initialSheetConfig.gapY);
+      if (initialSheetConfig.upOffsets) setUpOffsets(initialSheetConfig.upOffsets);
+      if (initialSheetConfig.multiPageGang !== undefined) setMultiPageGang(initialSheetConfig.multiPageGang);
       if (initialSheetConfig.sheetOrientation) setSheetOrientation(initialSheetConfig.sheetOrientation);
       if (initialSheetConfig.isCustomFit || initialSheetConfig.name?.includes('Custom')) {
         setCustomSheet(true);
@@ -515,8 +523,8 @@ export default function ImpositionSection({
         setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
       }
 
-      setBoxGutterX(0);
-      setBoxGutterY(0);
+      setBoxGutterX(isInch ? 0.118 : 3.0);
+      setBoxGutterY(isInch ? 0.118 : 3.0);
       setInterlockShiftX(0);
       setInterlockShiftY(0);
       setMarginTop(6.35);
@@ -548,8 +556,8 @@ export default function ImpositionSection({
             setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
           }
 
-          setBoxGutterX(0);
-          setBoxGutterY(0);
+          setBoxGutterX(isInch ? 0.118 : 3.0);
+          setBoxGutterY(isInch ? 0.118 : 3.0);
           setInterlockShiftX(0);
           setInterlockShiftY(0);
           setMarginTop(6.35);
@@ -767,13 +775,19 @@ export default function ImpositionSection({
 
   // ─── Prepress Calculations ──────────────────────────────────────────────
   const isBoxJob = partMode === 'BOX';
-  const totalBookPages = parseInt(totalPages, 10) || (isBoxJob ? 1 : 16);
+  const sourcePdfPageCount = parseInt(analysisData?.pageCount || activeDocument?.pageCount || totalPages, 10) || 1;
+  const isMultiPageGangActive = Boolean(isBoxJob && multiPageGang && sourcePdfPageCount > 1);
+  const boxPagesPerSheet = Math.max(1, (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2));
+
+  const totalBookPages = parseInt(totalPages, 10) || (isBoxJob ? sourcePdfPageCount : 16);
   const layoutPages = selectedLayout;
   const totalSignatures = isBoxJob
-    ? Math.max(1, totalBookPages)
+    ? (isMultiPageGangActive
+        ? Math.max(1, Math.ceil(sourcePdfPageCount / boxPagesPerSheet))
+        : Math.max(1, sourcePdfPageCount))
     : Math.max(1, Math.ceil(totalBookPages / layoutPages));
   const totalCapacity = isBoxJob
-    ? totalSignatures * (boxCols * boxRows)
+    ? totalSignatures * boxPagesPerSheet
     : totalSignatures * layoutPages;
   const blankPaddingPages = isBoxJob ? 0 : Math.max(0, totalCapacity - totalBookPages);
 
@@ -1732,6 +1746,9 @@ export default function ImpositionSection({
         interlockShiftY: parseFloat(interlockShiftY) || 0,
         layoutShiftX: parseFloat(layoutShiftX) || 0,
         layoutShiftY: parseFloat(layoutShiftY) || 0,
+        upOffsets: upOffsets || {},
+        pageAllocation: pageAllocation || {},
+        multiPageGang: Boolean(multiPageGang && sourcePdfPageCount > 1),
         gutterX: gxMM,
         gutterY: gyMM,
         orderQuantity: parseInt(orderQuantity, 10) || 1000
@@ -2801,24 +2818,25 @@ export default function ImpositionSection({
                     type="button"
                     onClick={() => {
                       const isInch = packagingUnit === 'inch';
-                      const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
-                      const clearance = 3.0; // exact 3mm clearance
-                      const nestY_MM = -Math.max(0, tuck - clearance);
-                      const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
                       const g3 = isInch ? 0.118 : 3.0;
                       handleBoxGutterXChange(g3);
-                      handleBoxGutterYChange(nestY);
+                      handleBoxGutterYChange(g3);
+                      setInterlockShiftX(0);
+                      setInterlockShiftY(0);
                       setInterlockMode('INTERLOCKING');
+                      setBoxGuttersLinked(true);
                     }}
                     className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
-                      boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                      interlockMode === 'INTERLOCKING' &&
+                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01 &&
+                      Math.abs(parseFloat(boxGutterY) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
                         ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold border-indigo-400 shadow-indigo-600/40'
                         : 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border-indigo-600'
                     }`}
-                    title="Nests interlocking tuck flaps with exact 3.0 mm die clearance and 3.0 mm column spacing"
+                    title="Nests interlocking cartons with strict 3.0 mm die clearance overall between all rows and columns"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-                    <span>{packagingUnit === 'inch' ? '🔄 3mm Flap Nesting (Interlock)' : '🔄 3.0 mm Flap Nesting (Interlock)'}</span>
+                    <span>{packagingUnit === 'inch' ? '🔄 Strict 0.118" Interlock (3mm Overall)' : '🔄 Strict 3.0 mm Interlock Gap Overall'}</span>
                   </button>
 
                   <button
@@ -3162,30 +3180,89 @@ export default function ImpositionSection({
                   )}
                 </div>
 
-                {/* ─── Interactive Layout Positioning & Nudge ─── */}
-                <div className="p-3 rounded-xl bg-[#141C2A] border border-cyan-500/40 space-y-2.5">
-                  <div className="flex items-center justify-between text-xs font-mono font-bold text-white">
+                {/* ─── Interactive Layout Positioning & Individual Up Drag Nudge ─── */}
+                <div className="p-3.5 rounded-xl bg-[#141C2A] border border-cyan-500/40 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-mono font-bold text-white flex-wrap gap-2">
                     <div className="flex items-center gap-1.5 text-cyan-300">
                       <Move className="w-4 h-4 text-cyan-400" />
-                      <span>LAYOUT POSITION & DRAG NUDGE</span>
+                      <span>DRAG & NUDGE (INDIVIDUAL UPS & SHEET)</span>
                     </div>
-                    {(layoutShiftX !== 0 || layoutShiftY !== 0) && (
-                      <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded">
-                        Shift: X {layoutShiftX > 0 ? `+${layoutShiftX}` : layoutShiftX}mm | Y {layoutShiftY > 0 ? `+${layoutShiftY}` : layoutShiftY}mm
-                      </span>
-                    )}
+
+                    <div className="flex items-center gap-1 text-[10px] font-mono">
+                      {selectedUpIndex !== null ? (
+                        <span className="text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded font-bold">
+                          Selected: UP #{selectedUpIndex + 1}
+                          {upOffsets?.[selectedUpIndex] ? ` (X: ${upOffsets[selectedUpIndex].x || 0}mm, Y: ${upOffsets[selectedUpIndex].y || 0}mm)` : ' (0,0)'}
+                        </span>
+                      ) : (
+                        <span className="text-cyan-300 bg-cyan-500/20 border border-cyan-500/40 px-2 py-0.5 rounded font-bold">
+                          Target: Entire Sheet
+                          {(layoutShiftX !== 0 || layoutShiftY !== 0) ? ` (X: ${layoutShiftX}mm, Y: ${layoutShiftY}mm)` : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <p className="text-[10px] font-mono text-slate-400 leading-tight">
-                    Click "✋ DRAG TO POSITION" on preview to drag cartons directly, or use D-pad arrows to nudge on press sheet.
+                    Click any carton on the preview to drag it individually, or select an Up below to nudge with D-pad arrows.
                   </p>
 
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                  {/* Up Selection Pills */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-mono text-slate-400 mr-1">Target:</span>
+                    {Array.from({ length: (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2) }).map((_, uIdx) => {
+                      const hasShift = Boolean(upOffsets?.[uIdx]?.x || upOffsets?.[uIdx]?.y);
+                      const isSel = selectedUpIndex === uIdx;
+                      return (
+                        <button
+                          key={`up-sel-pill-${uIdx}`}
+                          type="button"
+                          onClick={() => setSelectedUpIndex(uIdx)}
+                          className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                            isSel
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm shadow-amber-500/30'
+                              : hasShift
+                                ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500'
+                                : 'bg-[#10141D] text-slate-400 border-[#233045] hover:text-white'
+                          }`}
+                        >
+                          <span>UP #{uIdx + 1}</span>
+                          {hasShift && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUpIndex(null)}
+                      className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                        selectedUpIndex === null
+                          ? 'bg-cyan-600 text-white border-cyan-400 shadow-sm'
+                          : 'bg-[#10141D] text-slate-400 border-[#233045] hover:text-white'
+                      }`}
+                      title="Nudge entire sheet layout"
+                    >
+                      ALL (Sheet)
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
                     {/* D-Pad Arrow Controls */}
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => setLayoutShiftX(prev => Math.round((prev - nudgeStep) * 10) / 10)}
+                        onClick={() => {
+                          if (selectedUpIndex !== null) {
+                            setUpOffsets(prev => ({
+                              ...prev,
+                              [selectedUpIndex]: {
+                                x: Math.round(((prev[selectedUpIndex]?.x || 0) - nudgeStep) * 10) / 10,
+                                y: prev[selectedUpIndex]?.y || 0
+                              }
+                            }));
+                          } else {
+                            setLayoutShiftX(prev => Math.round((prev - nudgeStep) * 10) / 10);
+                          }
+                        }}
                         className="w-7 h-7 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
                         title={`Nudge Left (-${nudgeStep}mm)`}
                       >
@@ -3194,7 +3271,19 @@ export default function ImpositionSection({
                       <div className="flex flex-col gap-0.5">
                         <button
                           type="button"
-                          onClick={() => setLayoutShiftY(prev => Math.round((prev + nudgeStep) * 10) / 10)}
+                          onClick={() => {
+                            if (selectedUpIndex !== null) {
+                              setUpOffsets(prev => ({
+                                ...prev,
+                                [selectedUpIndex]: {
+                                  x: prev[selectedUpIndex]?.x || 0,
+                                  y: Math.round(((prev[selectedUpIndex]?.y || 0) - nudgeStep) * 10) / 10
+                                }
+                              }));
+                            } else {
+                              setLayoutShiftY(prev => Math.round((prev - nudgeStep) * 10) / 10);
+                            }
+                          }}
                           className="w-7 h-6 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
                           title={`Nudge Up (+${nudgeStep}mm)`}
                         >
@@ -3202,7 +3291,19 @@ export default function ImpositionSection({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setLayoutShiftY(prev => Math.round((prev - nudgeStep) * 10) / 10)}
+                          onClick={() => {
+                            if (selectedUpIndex !== null) {
+                              setUpOffsets(prev => ({
+                                ...prev,
+                                [selectedUpIndex]: {
+                                  x: prev[selectedUpIndex]?.x || 0,
+                                  y: Math.round(((prev[selectedUpIndex]?.y || 0) + nudgeStep) * 10) / 10
+                                }
+                              }));
+                            } else {
+                              setLayoutShiftY(prev => Math.round((prev + nudgeStep) * 10) / 10);
+                            }
+                          }}
                           className="w-7 h-6 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
                           title={`Nudge Down (-${nudgeStep}mm)`}
                         >
@@ -3211,7 +3312,19 @@ export default function ImpositionSection({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setLayoutShiftX(prev => Math.round((prev + nudgeStep) * 10) / 10)}
+                        onClick={() => {
+                          if (selectedUpIndex !== null) {
+                            setUpOffsets(prev => ({
+                              ...prev,
+                              [selectedUpIndex]: {
+                                x: Math.round(((prev[selectedUpIndex]?.x || 0) + nudgeStep) * 10) / 10,
+                                y: prev[selectedUpIndex]?.y || 0
+                              }
+                            }));
+                          } else {
+                            setLayoutShiftX(prev => Math.round((prev + nudgeStep) * 10) / 10);
+                          }
+                        }}
                         className="w-7 h-7 rounded bg-[#10141D] hover:bg-[#1E293B] border border-[#233045] text-slate-200 hover:text-white flex items-center justify-center font-bold text-xs cursor-pointer transition-all"
                         title={`Nudge Right (+${nudgeStep}mm)`}
                       >
@@ -3236,17 +3349,133 @@ export default function ImpositionSection({
                       ))}
                     </div>
 
-                    {/* Center Reset Button */}
-                    <button
-                      type="button"
-                      onClick={() => { setLayoutShiftX(0); setLayoutShiftY(0); }}
-                      className="px-2.5 py-1 rounded bg-[#10141D] hover:bg-[#1E293B] text-slate-300 hover:text-white border border-[#233045] text-[10px] font-mono font-bold transition-all cursor-pointer"
-                      title="Reset position to perfect sheet center"
-                    >
-                      🎯 Center (0, 0)
-                    </button>
+                    {/* Reset Buttons */}
+                    <div className="flex items-center gap-1">
+                      {selectedUpIndex !== null ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUpOffsets(prev => {
+                              const next = { ...prev };
+                              delete next[selectedUpIndex];
+                              return next;
+                            });
+                          }}
+                          className="px-2 py-1 rounded bg-[#10141D] hover:bg-[#1E293B] text-amber-300 hover:text-white border border-[#233045] text-[10px] font-mono font-bold transition-all cursor-pointer"
+                          title="Reset selected UP offset to default grid"
+                        >
+                          🎯 Reset UP #{selectedUpIndex + 1}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setLayoutShiftX(0); setLayoutShiftY(0); }}
+                          className="px-2 py-1 rounded bg-[#10141D] hover:bg-[#1E293B] text-slate-300 hover:text-white border border-[#233045] text-[10px] font-mono font-bold transition-all cursor-pointer"
+                          title="Reset position to perfect sheet center"
+                        >
+                          🎯 Center Sheet
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUpOffsets({});
+                          setLayoutShiftX(0);
+                          setLayoutShiftY(0);
+                        }}
+                        className="px-2 py-1 rounded bg-[#10141D] hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-[#233045] text-[10px] font-mono transition-all cursor-pointer"
+                        title="Reset all individual up shifts and sheet center"
+                      >
+                        Reset All
+                      </button>
+                    </div>
                   </div>
                 </div>
+
+                {/* ─── Multi-Page Combo Gang Imposition Section (For Multi-Page PDFs) ─── */}
+                {sourcePdfPageCount > 1 && (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-br from-[#0F172A] to-[#141C2A] border border-emerald-500/50 space-y-3 shadow-lg shadow-emerald-950/20">
+                    <div className="flex items-center justify-between text-xs font-mono font-bold text-white flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 text-emerald-300">
+                        <Layers className="w-4 h-4 text-emerald-400" />
+                        <span>MULTI-PAGE COMBO GANG ({sourcePdfPageCount} PAGES DETECTED)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMultiPageGang(prev => !prev)}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                          multiPageGang
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                            : 'bg-[#10141D] text-slate-400 border-[#233045]'
+                        }`}
+                      >
+                        {multiPageGang ? '✓ COMBO GANG ACTIVE' : 'STEP & REPEAT'}
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] font-mono text-slate-400 leading-tight">
+                      {multiPageGang
+                        ? `Each up on this sheet holds a different page design from your ${sourcePdfPageCount}-page file.`
+                        : `Step & repeat mode: Repeat Page 1 across all ups.`}
+                    </p>
+
+                    {multiPageGang && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {Array.from({ length: (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2) }).map((_, uIdx) => {
+                            const defaultPage = Math.min(sourcePdfPageCount, uIdx + 1);
+                            const curPage = pageAllocation[uIdx] || defaultPage;
+                            return (
+                              <div key={`page-assign-${uIdx}`} className="p-2 rounded-lg bg-[#10141D] border border-[#233045] text-[10px] font-mono space-y-1">
+                                <div className="flex items-center justify-between text-slate-400 font-bold">
+                                  <span>UP #{uIdx + 1}</span>
+                                  <span className="text-emerald-400">Page {curPage}</span>
+                                </div>
+                                <select
+                                  value={curPage}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    setPageAllocation(prev => ({ ...prev, [uIdx]: val }));
+                                  }}
+                                  className="w-full bg-[#141C2A] border border-[#233045] rounded px-1.5 py-1 text-white font-bold text-xs"
+                                >
+                                  {Array.from({ length: sourcePdfPageCount }, (_, pI) => (
+                                    <option key={pI + 1} value={pI + 1}>
+                                      Page {pI + 1}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 text-[10px] font-mono">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const alloc = {};
+                              const totalUps = (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2);
+                              for (let i = 0; i < totalUps; i++) {
+                                alloc[i] = Math.min(sourcePdfPageCount, i + 1);
+                              }
+                              setPageAllocation(alloc);
+                            }}
+                            className="text-cyan-400 hover:text-cyan-300 underline font-bold cursor-pointer"
+                          >
+                            🎯 Auto-Assign Pages 1–{Math.min(sourcePdfPageCount, (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2))}
+                          </button>
+                          {sourcePdfPageCount > (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2) && (
+                            <span className="text-amber-300">
+                              Remaining {sourcePdfPageCount - (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2)} page(s) flow to Sheet 2
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* ─── Artwork Margins & Crop / Trim (Remove Wasted Space) ─── */}
@@ -4460,7 +4689,10 @@ export default function ImpositionSection({
                 interlockShiftX,
                 interlockShiftY,
                 layoutShiftX,
-                layoutShiftY
+                layoutShiftY,
+                upOffsets,
+                pageAllocation,
+                multiPageGang
               }}
               layoutShiftX={layoutShiftX}
               layoutShiftY={layoutShiftY}
@@ -4468,6 +4700,17 @@ export default function ImpositionSection({
                 setLayoutShiftX(sx);
                 setLayoutShiftY(sy);
               }}
+              upOffsets={upOffsets}
+              onUpOffsetChange={(upIdx, x, y) => {
+                setUpOffsets(prev => ({
+                  ...prev,
+                  [upIdx]: { x, y }
+                }));
+              }}
+              selectedUpIndex={selectedUpIndex}
+              onSelectUp={(upIdx) => setSelectedUpIndex(upIdx)}
+              pageAllocation={pageAllocation}
+              multiPageGang={Boolean(multiPageGang && sourcePdfPageCount > 1)}
             />
           </div>
         </div>

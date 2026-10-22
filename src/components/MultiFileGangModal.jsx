@@ -19,7 +19,13 @@ import {
   Download
 } from 'lucide-react';
 
-export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio }) {
+export default function MultiFileGangModal({ 
+  isOpen, 
+  onClose, 
+  onApplyToStudio,
+  activeDocument = null,
+  analysisData = null 
+}) {
   if (!isOpen) return null;
 
   // ─── Sheet Presets ──────────────────────────────────────────────────────────
@@ -91,8 +97,11 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
   const [marginMM, setMarginMM] = useState(6.35); // 0.25 in (6.35 mm) gripper margin
   const [activeStrategy, setActiveStrategy] = useState('BALANCED_RATIO'); // 'BALANCED_RATIO' | 'MAX_DENSITY' | 'CUSTOM'
   const [activePreviewSheetIdx, setActivePreviewSheetIdx] = useState(0);
+  const [gangUpOffsets, setGangUpOffsets] = useState({}); // { [cellIdx]: { x, y } }
+  const [draggingGangCell, setDraggingGangCell] = useState(null);
 
   const fileInputRef = useRef(null);
+  const gangSvgRef = useRef(null);
 
   // Active sheet geometry
   const currentSheet = useMemo(() => {
@@ -136,6 +145,67 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
   const updateFileUps = (id, ups) => {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, customUps: Math.max(0, parseInt(ups, 10) || 0) } : f));
   };
+
+  // ─── Extract Multi-Page Document Pages into Queue ─────────────────────────
+  const handleImportCurrentDocumentPages = () => {
+    const pageCount = parseInt(analysisData?.pageCount || activeDocument?.pageCount || 1, 10);
+    if (pageCount <= 1) return;
+
+    const docW = Math.round((analysisData?.pageWidthMM || analysisData?.widthMM || 298) * 10) / 10;
+    const docH = Math.round((analysisData?.pageHeightMM || analysisData?.heightMM || 234) * 10) / 10;
+
+    const extracted = Array.from({ length: pageCount }, (_, i) => {
+      const colorIdx = i % COLOR_PALETTE.length;
+      const pNum = i + 1;
+      return {
+        id: `page_${pNum}_${Date.now()}`,
+        name: `${activeDocument?.name ? activeDocument.name.replace(/\.pdf$/i, '') : 'Artwork'}_P${pNum}.pdf`,
+        pageNumber: pNum,
+        widthMM: docW,
+        heightMM: docH,
+        pages: 1,
+        targetQuantity: 2500,
+        ...COLOR_PALETTE[colorIdx],
+        customUps: 1
+      };
+    });
+
+    setFiles(extracted);
+  };
+
+  // ─── Seamless Global Dragging for Gang Cells ─────────────────────────────
+  React.useEffect(() => {
+    if (!draggingGangCell) return;
+
+    const handleMouseMove = (e) => {
+      if (!gangSvgRef.current) return;
+      const rect = gangSvgRef.current.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const scaleX = (currentSheet.width + 40) / rect.width;
+      const scaleY = (currentSheet.height + 40) / rect.height;
+      const dx = (e.clientX - draggingGangCell.clientX) * scaleX;
+      const dy = (e.clientY - draggingGangCell.clientY) * scaleY;
+
+      const newX = Math.round((draggingGangCell.initialX + dx) * 10) / 10;
+      const newY = Math.round((draggingGangCell.initialY + dy) * 10) / 10;
+
+      setGangUpOffsets(prev => ({
+        ...prev,
+        [draggingGangCell.idx]: { x: newX, y: newY }
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setDraggingGangCell(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingGangCell, currentSheet]);
 
   // ─── Multi-File Gang Run Optimization Engine ────────────────────────────────
   const optimizationPlan = useMemo(() => {
@@ -412,6 +482,23 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
                 />
               </div>
 
+              {/* One-click extract from current multi-page PDF */}
+              {((analysisData?.pageCount && analysisData.pageCount > 1) || (activeDocument?.pageCount && activeDocument.pageCount > 1)) && (
+                <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-950/80 to-teal-950/80 border border-emerald-500/50 flex items-center justify-between gap-2 shadow-md">
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-300">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Multi-Page PDF Detected ({analysisData?.pageCount || activeDocument?.pageCount} Pages)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleImportCurrentDocumentPages}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-[10px] font-bold shadow-md shadow-emerald-900/40 transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    📄 Load {analysisData?.pageCount || activeDocument?.pageCount} Pages into Queue
+                  </button>
+                </div>
+              )}
+
               {/* File Cards List */}
               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                 {files.map((file, idx) => (
@@ -534,8 +621,9 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
               {activeSheet ? (
                 <div className="w-full h-full flex flex-col items-center justify-center">
                   <svg
+                    ref={gangSvgRef}
                     viewBox={`0 0 ${currentSheet.width + 40} ${currentSheet.height + 40}`}
-                    className="w-full max-h-[350px] object-contain drop-shadow-2xl"
+                    className={`w-full max-h-[350px] object-contain drop-shadow-2xl select-none ${draggingGangCell ? 'cursor-grabbing' : ''}`}
                   >
                     {/* Sheet Paper Background */}
                     <rect
@@ -569,28 +657,43 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
 
                       const cellW = cell.w;
                       const cellH = cell.h;
-                      const startX = 20 + marginMM + col * (cellW + gapMM);
-                      const startY = 20 + marginMM + row * (cellH + gapMM);
+                      const indOff = gangUpOffsets[idx] || { x: 0, y: 0 };
+                      const cellX = 20 + marginMM + col * (cellW + gapMM) + (indOff.x || 0);
+                      const cellY = 20 + marginMM + row * (cellH + gapMM) + (indOff.y || 0);
+                      const isCellDragging = draggingGangCell?.idx === idx;
 
                       return (
-                        <g key={`gang-cell-${idx}`}>
+                        <g
+                          key={`gang-cell-${idx}`}
+                          style={{ cursor: isCellDragging ? 'grabbing' : 'grab' }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            setDraggingGangCell({
+                              idx,
+                              clientX: e.clientX,
+                              clientY: e.clientY,
+                              initialX: indOff.x || 0,
+                              initialY: indOff.y || 0
+                            });
+                          }}
+                        >
                           {/* Carton Cell Outer Rectangle */}
                           <rect
-                            x={startX}
-                            y={startY}
+                            x={cellX}
+                            y={cellY}
                             width={cellW}
                             height={cellH}
                             fill={cell.color}
                             fillOpacity="0.12"
-                            stroke={cell.color}
-                            strokeWidth="1.0"
+                            stroke={isCellDragging ? "#F59E0B" : cell.color}
+                            strokeWidth={isCellDragging ? "1.8" : "1.0"}
                             rx="2"
                           />
 
                           {/* Inner Dashed Dieline */}
                           <rect
-                            x={startX + 4}
-                            y={startY + 4}
+                            x={cellX + 4}
+                            y={cellY + 4}
                             width={Math.max(10, cellW - 8)}
                             height={Math.max(10, cellH - 8)}
                             fill="none"
@@ -602,19 +705,19 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
 
                           {/* File Badge & Up Number */}
                           <rect
-                            x={startX + cellW / 2 - 45}
-                            y={startY + cellH / 2 - 14}
+                            x={cellX + cellW / 2 - 45}
+                            y={cellY + cellH / 2 - 14}
                             width="90"
                             height="28"
                             rx="4"
                             fill="#0B132B"
                             fillOpacity="0.95"
-                            stroke={cell.color}
+                            stroke={isCellDragging ? "#F59E0B" : cell.color}
                             strokeWidth="0.8"
                           />
                           <text
-                            x={startX + cellW / 2}
-                            y={startY + cellH / 2 - 2}
+                            x={cellX + cellW / 2}
+                            y={cellY + cellH / 2 - 2}
                             fill="#F8FAFC"
                             fontSize="8.5"
                             fontFamily="monospace"
@@ -624,8 +727,8 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
                             {cell.fileName.slice(0, 14)}...
                           </text>
                           <text
-                            x={startX + cellW / 2}
-                            y={startY + cellH / 2 + 9}
+                            x={cellX + cellW / 2}
+                            y={cellY + cellH / 2 + 9}
                             fill={cell.color}
                             fontSize="7.5"
                             fontFamily="monospace"
@@ -633,16 +736,17 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
                             textAnchor="middle"
                           >
                             UP #{idx + 1} ({cell.w}×{cell.h}mm)
+                            {(indOff.x !== 0 || indOff.y !== 0) ? ` (Shifted)` : ''}
                           </text>
 
                           {/* 3.0 mm Gutter Indicator (Horizontal) */}
                           {col < cols - 1 && (
                             <g>
                               <line
-                                x1={startX + cellW}
-                                y1={startY + cellH / 2}
-                                x2={startX + cellW + gapMM}
-                                y2={startY + cellH / 2}
+                                x1={cellX + cellW}
+                                y1={cellY + cellH / 2}
+                                x2={cellX + cellW + gapMM}
+                                y2={cellY + cellH / 2}
                                 stroke="#F59E0B"
                                 strokeWidth="0.8"
                               />
@@ -737,7 +841,9 @@ export default function MultiFileGangModal({ isOpen, onClose, onApplyToStudio })
                       gapY: gapMM,
                       cols: activeSheet?.cols || 2,
                       rows: activeSheet?.rows || 2,
-                      multiFiles: files
+                      multiFiles: files,
+                      upOffsets: gangUpOffsets,
+                      multiPageGang: true
                     });
                   }
                   onClose();

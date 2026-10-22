@@ -615,7 +615,13 @@ export default function SheetPreview({
   keylineElements = [],
   layoutShiftX = 0,
   layoutShiftY = 0,
-  onLayoutShiftChange = null
+  onLayoutShiftChange = null,
+  upOffsets = {},
+  onUpOffsetChange = null,
+  selectedUpIndex = null,
+  onSelectUp = null,
+  pageAllocation = {},
+  multiPageGang = false
 }) {
   const [activeSide, setActiveSide] = useState('FRONT');
   const [showMargins, setShowMargins] = useState(true);
@@ -624,8 +630,7 @@ export default function SheetPreview({
   const [showArtwork, setShowArtwork] = useState(true);
   const [showCustomKeylines, setShowCustomKeylines] = useState(true);
   const [isDragRepositionMode, setIsDragRepositionMode] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOrigin, setDragOrigin] = useState({ clientX: 0, clientY: 0, initialX: 0, initialY: 0 });
+  const [draggingTarget, setDraggingTarget] = useState(null); // null | { type: 'UP', upIdx, clientX, clientY, initialX, initialY } | { type: 'LAYOUT', clientX, clientY, initialX, initialY }
   const svgRef = useRef(null);
 
   const isDuplex = workStyle !== 'SIMPLEX' && workStyle !== 'SINGLE_SIDED';
@@ -803,6 +808,7 @@ export default function SheetPreview({
 
     for (let row = 0; row < r; row++) {
       for (let col = 0; col < c; col++) {
+        const idx = row * c + col;
         let rot = 0;
         if (interlockMode === 'INTERLOCKING' || interlockMode === 'DUTCH') {
           rot = (row % 2 === 1) ? 180 : 0;
@@ -817,18 +823,49 @@ export default function SheetPreview({
           shiftY = parseFloat(boxParams?.interlockShiftY || 0);
         }
 
+        // Individual up offset
+        const indOffset = upOffsets?.[idx] || upOffsets?.[String(idx)] || { x: 0, y: 0 };
+        const upOffsetX = parseFloat(indOffset.x || 0);
+        const upOffsetY = parseFloat(indOffset.y || 0);
+
+        // Multi-page page allocation
+        let assignedPage = activeSide === 'FRONT'
+          ? Math.min(parseInt(totalPages, 10) || 1, (parseInt(sheetIndex, 10) || 0) + 1)
+          : (parseInt(totalPages, 10) >= 2 ? 2 : 1);
+
+        let isSlotEmpty = false;
+        if (pageAllocation && (pageAllocation[idx] !== undefined || pageAllocation[String(idx)] !== undefined)) {
+          const allocVal = pageAllocation[idx] ?? pageAllocation[String(idx)];
+          if (allocVal === 'NONE' || allocVal === null || allocVal === 0 || allocVal === '') {
+            isSlotEmpty = true;
+            assignedPage = null;
+          } else {
+            assignedPage = parseInt(allocVal, 10);
+          }
+        } else if (multiPageGang && parseInt(totalPages, 10) > 1) {
+          const sheetBase = (parseInt(sheetIndex, 10) || 0) * (r * c);
+          const computedPage = sheetBase + idx + 1;
+          if (computedPage > parseInt(totalPages, 10)) {
+            isSlotEmpty = true;
+            assignedPage = null;
+          } else {
+            assignedPage = computedPage;
+          }
+        }
+
         cells.push({
           row,
           col,
-          x: startX + col * (cellW + gx) + shiftX,
-          y: startY + row * (cellH + gy) + shiftY,
+          x: startX + col * (cellW + gx) + shiftX + upOffsetX,
+          y: startY + row * (cellH + gy) + shiftY + upOffsetY,
           w: cellW,
           h: cellH,
           rot,
-          idx: row * c + col,
-          page: activeSide === 'FRONT'
-            ? Math.min(parseInt(totalPages, 10) || 1, (parseInt(sheetIndex, 10) || 0) + 1)
-            : (parseInt(totalPages, 10) >= 2 ? 2 : 1)
+          idx,
+          page: assignedPage,
+          isSlotEmpty,
+          upOffsetX,
+          upOffsetY
         });
       }
     }
@@ -896,6 +933,42 @@ export default function SheetPreview({
 
   const currentSigStart = (parseInt(sheetIndex, 10) || 0) * layoutPagesCount + 1;
   const currentSigEnd = Math.min(currentSigStart + layoutPagesCount - 1, totalBookPages);
+
+  // Seamless global window mouse tracking for dragging individual ups or sheet layout
+  useEffect(() => {
+    if (!draggingTarget) return;
+
+    const handleMouseMove = (e) => {
+      if (!svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const scaleX = vbW / rect.width;
+      const scaleY = vbH / rect.height;
+      const dx = (e.clientX - draggingTarget.clientX) * scaleX;
+      const dy = (e.clientY - draggingTarget.clientY) * scaleY;
+
+      if (draggingTarget.type === 'UP') {
+        const newX = Math.round((draggingTarget.initialX + dx) * 10) / 10;
+        const newY = Math.round((draggingTarget.initialY + dy) * 10) / 10;
+        onUpOffsetChange?.(draggingTarget.upIdx, newX, newY);
+      } else if (draggingTarget.type === 'LAYOUT') {
+        const newX = Math.round((draggingTarget.initialX + dx) * 10) / 10;
+        const newY = Math.round((draggingTarget.initialY + dy) * 10) / 10;
+        onLayoutShiftChange?.(newX, newY);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDraggingTarget(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingTarget, vbW, vbH, onUpOffsetChange, onLayoutShiftChange]);
 
   return (
     <div className="w-full">
@@ -1027,9 +1100,42 @@ export default function SheetPreview({
             </button>
           )}
 
+          {/* Individual Up Shift Status */}
+          {partMode === 'BOX' && Object.keys(upOffsets || {}).some(k => upOffsets[k]?.x || upOffsets[k]?.y) && (
+            <div className="flex items-center gap-1.5 bg-[#141C2A] border border-cyan-500/40 rounded-lg px-2 py-0.5 text-[9px] font-mono text-cyan-300 shadow-sm">
+              <span>Ups Custom Shifted</span>
+              <button
+                type="button"
+                onClick={() => {
+                  Object.keys(upOffsets || {}).forEach(k => onUpOffsetChange?.(k, 0, 0));
+                }}
+                className="ml-1 text-slate-400 hover:text-white underline cursor-pointer"
+                title="Reset all individual up shifts"
+              >
+                Reset All Ups
+              </button>
+            </div>
+          )}
+
+          {partMode === 'BOX' && selectedUpIndex !== null && (
+            <div className="flex items-center gap-1.5 bg-[#141C2A] border border-amber-500/40 rounded-lg px-2 py-0.5 text-[9px] font-mono text-amber-300 shadow-sm">
+              <span>Selected: UP #{selectedUpIndex + 1}</span>
+              {(upOffsets?.[selectedUpIndex]?.x || upOffsets?.[selectedUpIndex]?.y) && (
+                <button
+                  type="button"
+                  onClick={() => onUpOffsetChange?.(selectedUpIndex, 0, 0)}
+                  className="ml-1 text-slate-400 hover:text-white underline cursor-pointer"
+                  title="Reset selected up offset"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+
           {partMode === 'BOX' && (layoutShiftX !== 0 || layoutShiftY !== 0) && (
             <div className="flex items-center gap-1.5 bg-[#141C2A] border border-amber-500/40 rounded-lg px-2 py-0.5 text-[9px] font-mono text-amber-300 shadow-sm">
-              <span>Shift: X {layoutShiftX > 0 ? `+${layoutShiftX}` : layoutShiftX}mm | Y {layoutShiftY > 0 ? `+${layoutShiftY}` : layoutShiftY}mm</span>
+              <span>Sheet Shift: X {layoutShiftX > 0 ? `+${layoutShiftX}` : layoutShiftX}mm | Y {layoutShiftY > 0 ? `+${layoutShiftY}` : layoutShiftY}mm</span>
               <button
                 type="button"
                 onClick={() => onLayoutShiftChange?.(0, 0)}
@@ -1048,39 +1154,25 @@ export default function SheetPreview({
         {isDragRepositionMode && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-amber-500/90 text-slate-950 font-mono text-[10px] font-bold px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 pointer-events-none">
             <Move className="w-3 h-3" />
-            <span>Click & Drag to reposition packaging cartons on press sheet</span>
+            <span>Click & Drag ANY INDIVIDUAL UP or drag sheet to reposition</span>
           </div>
         )}
         <svg
           ref={svgRef}
           viewBox={`0 0 ${vbW} ${vbH}`}
-          className={`w-full h-auto ${isDragRepositionMode ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+          className={`w-full h-auto ${draggingTarget ? (draggingTarget.type === 'UP' ? 'cursor-grabbing' : 'cursor-move') : ''}`}
           style={{ maxHeight: '540px' }}
           xmlns="http://www.w3.org/2000/svg"
           onMouseDown={(e) => {
-            if (!isDragRepositionMode) return;
-            setIsDragging(true);
-            setDragOrigin({
+            // Clicking background press table pans the entire sheet layout
+            setDraggingTarget({
+              type: 'LAYOUT',
               clientX: e.clientX,
               clientY: e.clientY,
               initialX: parseFloat(layoutShiftX || boxParams?.layoutShiftX || 0),
               initialY: parseFloat(layoutShiftY || boxParams?.layoutShiftY || 0)
             });
           }}
-          onMouseMove={(e) => {
-            if (!isDragging || !isDragRepositionMode || !svgRef.current) return;
-            const rect = svgRef.current.getBoundingClientRect();
-            if (!rect.width || !rect.height) return;
-            const scaleX = vbW / rect.width;
-            const scaleY = vbH / rect.height;
-            const dx = (e.clientX - dragOrigin.clientX) * scaleX;
-            const dy = (e.clientY - dragOrigin.clientY) * scaleY;
-            const newX = Math.round((dragOrigin.initialX + dx) * 10) / 10;
-            const newY = Math.round((dragOrigin.initialY + dy) * 10) / 10;
-            onLayoutShiftChange?.(newX, newY);
-          }}
-          onMouseUp={() => setIsDragging(false)}
-          onMouseLeave={() => setIsDragging(false)}
         >
           {/* Press table background */}
           <rect x="0" y="0" width={vbW} height={vbH} fill="#23272F" />
@@ -1677,8 +1769,33 @@ export default function SheetPreview({
                 const cx = pad + cell.x + cell.w / 2;
                 const cy = pad + cell.y + cell.h / 2;
 
+                const isCellSelected = selectedUpIndex === cell.idx;
+                const isCellDragging = draggingTarget?.type === 'UP' && draggingTarget?.upIdx === cell.idx;
+
                 return (
-                  <g key={`box-cell-${cell.idx}`}>
+                  <g
+                    key={`box-cell-${cell.idx}`}
+                    style={{
+                      cursor: isCellDragging ? 'grabbing' : 'grab',
+                      touchAction: 'none'
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectUp?.(cell.idx);
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onSelectUp?.(cell.idx);
+                      setDraggingTarget({
+                        type: 'UP',
+                        upIdx: cell.idx,
+                        clientX: e.clientX,
+                        clientY: e.clientY,
+                        initialX: cell.upOffsetX || 0,
+                        initialY: cell.upOffsetY || 0
+                      });
+                    }}
+                  >
                     {/* Defs clip path for trimmed cell artwork */}
                     <defs>
                       <clipPath id={`box-clip-${cell.idx}`}>
@@ -1692,78 +1809,164 @@ export default function SheetPreview({
                       </clipPath>
                     </defs>
 
-                    {/* Cell slot rectangle */}
-                    <rect
-                      x={pad + cell.x}
-                      y={pad + cell.y}
-                      width={cell.w}
-                      height={cell.h}
-                      fill={hasArtwork ? 'none' : '#F8FAFC'}
-                      stroke={hasArtwork && boxLayout.gy < 0 ? 'none' : '#94A3B8'}
-                      strokeWidth="0.3"
-                    />
-
-                    {/* PDF Artwork Image (Cropped to exact dieline boundary & rotated for interlocking) */}
-                    {hasArtwork && (() => {
-                      const srcW = pageViewports?.[0]?.widthMM || cell.w;
-                      const srcH = pageViewports?.[0]?.heightMM || cell.h;
-                      const cropL = parseFloat(boxParams?.cropLeftMM ?? boxParams?.trimLeftMM) || 0;
-                      const cropT = parseFloat(boxParams?.cropTopMM ?? boxParams?.trimTopMM) || 0;
-                      const cropR = parseFloat(boxParams?.cropRightMM ?? boxParams?.trimRightMM) || 0;
-                      const cropB = parseFloat(boxParams?.cropBottomMM ?? boxParams?.trimBottomMM) || 0;
-                      const viewW = Math.max(10, srcW - cropL - cropR);
-                      const viewH = Math.max(10, srcH - cropT - cropB);
-                      const hasCrop = (cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0) && (viewW < srcW - 2 || viewH < srcH - 2);
-
-                      return (
-                        <g transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined} style={hasArtwork ? { mixBlendMode: 'multiply' } : undefined}>
-                          {hasCrop ? (
-                            <svg
-                              x={pad + cell.x}
-                              y={pad + cell.y}
-                              width={cell.w}
-                              height={cell.h}
-                              viewBox={`${cropL} ${cropT} ${viewW} ${viewH}`}
-                              preserveAspectRatio="none"
-                            >
-                              <image
-                                href={thumbUrl}
-                                x="0"
-                                y="0"
-                                width={srcW}
-                                height={srcH}
-                                preserveAspectRatio="none"
-                              />
-                            </svg>
-                          ) : (
-                            <image
-                              href={thumbUrl}
-                              x={pad + cell.x}
-                              y={pad + cell.y}
-                              width={cell.w}
-                              height={cell.h}
-                              preserveAspectRatio="none"
-                            />
-                          )}
+                    {/* Empty Slot Display (e.g. for Sheet 2 in Multi-Page Gang) */}
+                    {cell.isSlotEmpty ? (
+                      <g>
+                        <rect
+                          x={pad + cell.x}
+                          y={pad + cell.y}
+                          width={cell.w}
+                          height={cell.h}
+                          fill="#0F172A"
+                          fillOpacity="0.45"
+                          stroke={isCellSelected ? "#06B6D4" : "#475569"}
+                          strokeWidth="0.8"
+                          strokeDasharray="4 3"
+                          rx="2"
+                        />
+                        <g transform={`translate(${pad + cell.x + cell.w / 2}, ${pad + cell.y + cell.h / 2})`} pointerEvents="none">
+                          <text
+                            x="0"
+                            y="-2"
+                            textAnchor="middle"
+                            fontSize="5"
+                            fontFamily="monospace"
+                            fontWeight="bold"
+                            fill="#64748B"
+                          >
+                            EMPTY SLOT
+                          </text>
+                          <text
+                            x="0"
+                            y="6"
+                            textAnchor="middle"
+                            fontSize="3.8"
+                            fontFamily="monospace"
+                            fill="#475569"
+                          >
+                            UP #{cell.idx + 1} (No Artwork)
+                          </text>
                         </g>
-                      );
-                    })()}
+                      </g>
+                    ) : (
+                      <>
+                        {/* Cell slot rectangle */}
+                        <rect
+                          x={pad + cell.x}
+                          y={pad + cell.y}
+                          width={cell.w}
+                          height={cell.h}
+                          fill={hasArtwork ? 'none' : '#F8FAFC'}
+                          stroke={hasArtwork && boxLayout.gy < 0 ? 'none' : (isCellSelected ? '#06B6D4' : '#94A3B8')}
+                          strokeWidth={isCellSelected ? "0.6" : "0.3"}
+                        />
 
-                    {/* Vector Dieline Overlay - Clean cutting die border when artwork is shown */}
-                    {Boolean(boxParams?.dielineOverlay) && (
-                      <BoxCellDielineOverlay
-                        x={pad + cell.x}
-                        y={pad + cell.y}
-                        w={cell.w}
-                        h={cell.h}
-                        rot={cell.rot}
-                        boxStyle={boxParams?.boxStyle || 'RTE'}
-                        dielineOverlay={true}
-                        cellIndex={cell.idx + 1}
-                        boxParams={boxParams}
-                        hasArtwork={hasArtwork}
-                      />
+                        {/* Active Selection / Dragging Highlight Ring */}
+                        {(isCellSelected || isCellDragging) && (
+                          <rect
+                            x={pad + cell.x - 1.2}
+                            y={pad + cell.y - 1.2}
+                            width={cell.w + 2.4}
+                            height={cell.h + 2.4}
+                            fill="none"
+                            stroke={isCellDragging ? "#F59E0B" : "#06B6D4"}
+                            strokeWidth="1.2"
+                            strokeDasharray={isCellDragging ? "2 2" : "4 2"}
+                            rx="1.5"
+                            pointerEvents="none"
+                          />
+                        )}
+
+                        {/* PDF Artwork Image (Cropped to exact dieline boundary & rotated for interlocking) */}
+                        {hasArtwork && (() => {
+                          const srcW = pageViewports?.[cell.page - 1]?.widthMM || pageViewports?.[0]?.widthMM || cell.w;
+                          const srcH = pageViewports?.[cell.page - 1]?.heightMM || pageViewports?.[0]?.heightMM || cell.h;
+                          const cropL = parseFloat(boxParams?.cropLeftMM ?? boxParams?.trimLeftMM) || 0;
+                          const cropT = parseFloat(boxParams?.cropTopMM ?? boxParams?.trimTopMM) || 0;
+                          const cropR = parseFloat(boxParams?.cropRightMM ?? boxParams?.trimRightMM) || 0;
+                          const cropB = parseFloat(boxParams?.cropBottomMM ?? boxParams?.trimBottomMM) || 0;
+                          const viewW = Math.max(10, srcW - cropL - cropR);
+                          const viewH = Math.max(10, srcH - cropT - cropB);
+                          const hasCrop = (cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0) && (viewW < srcW - 2 || viewH < srcH - 2);
+
+                          return (
+                            <g transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined} style={hasArtwork ? { mixBlendMode: 'multiply' } : undefined}>
+                              {hasCrop ? (
+                                <svg
+                                  x={pad + cell.x}
+                                  y={pad + cell.y}
+                                  width={cell.w}
+                                  height={cell.h}
+                                  viewBox={`${cropL} ${cropT} ${viewW} ${viewH}`}
+                                  preserveAspectRatio="none"
+                                >
+                                  <image
+                                    href={thumbUrl}
+                                    x="0"
+                                    y="0"
+                                    width={srcW}
+                                    height={srcH}
+                                    preserveAspectRatio="none"
+                                  />
+                                </svg>
+                              ) : (
+                                <image
+                                  href={thumbUrl}
+                                  x={pad + cell.x}
+                                  y={pad + cell.y}
+                                  width={cell.w}
+                                  height={cell.h}
+                                  preserveAspectRatio="none"
+                                />
+                              )}
+                            </g>
+                          );
+                        })()}
+
+                        {/* Vector Dieline Overlay - Clean cutting die border when artwork is shown */}
+                        {Boolean(boxParams?.dielineOverlay) && (
+                          <BoxCellDielineOverlay
+                            x={pad + cell.x}
+                            y={pad + cell.y}
+                            w={cell.w}
+                            h={cell.h}
+                            rot={cell.rot}
+                            boxStyle={boxParams?.boxStyle || 'RTE'}
+                            dielineOverlay={true}
+                            cellIndex={cell.idx + 1}
+                            boxParams={boxParams}
+                            hasArtwork={hasArtwork}
+                          />
+                        )}
+                      </>
                     )}
+
+                    {/* Up Indicator Floating Tag */}
+                    <g transform={`translate(${pad + cell.x + cell.w / 2}, ${pad + cell.y + 6})`} pointerEvents="none">
+                      <rect
+                        x="-38"
+                        y="-5.5"
+                        width="76"
+                        height="10.5"
+                        rx="2.5"
+                        fill="#0B132B"
+                        fillOpacity="0.92"
+                        stroke={isCellSelected ? "#06B6D4" : "#475569"}
+                        strokeWidth="0.5"
+                      />
+                      <text
+                        x="0"
+                        y="1.8"
+                        textAnchor="middle"
+                        fontSize="3.8"
+                        fontFamily="monospace"
+                        fontWeight="bold"
+                        fill={isCellSelected ? "#38BDF8" : "#E2E8F0"}
+                      >
+                        UP #{cell.idx + 1} {cell.isSlotEmpty ? '• (Empty)' : (cell.page ? `• P.${cell.page}` : '')}
+                        {(cell.upOffsetX !== 0 || cell.upOffsetY !== 0) ? ` (Shifted)` : ''}
+                      </text>
+                    </g>
 
                     {/* Crop marks at cell corners (Suppressed in Box mode or when Key Die Lines are shown) */}
                     {cropMarks && !isBoxMode && !boxParams?.dielineOverlay && (

@@ -432,15 +432,21 @@ export default function App() {
           <MultiFileGangModal
             isOpen={isGangModalOpen}
             onClose={() => setIsGangModalOpen(false)}
+            activeDocument={activeDocument}
+            analysisData={analysisData}
             onApplyToStudio={(data) => {
               addLog('SUCCESS', `Multi-File Gang Plan applied: ${data.cols}×${data.rows} on ${data.sheetPreset} (${data.sheetWidth}×${data.sheetHeight}mm) with 3.0mm gaps.`);
               if (data.sheetPreset) {
                 setInitialSheetConfig({
                   name: data.sheetPreset,
-                  width: data.sheetWidth,
-                  height: data.sheetHeight,
+                  sheetWidth: data.sheetWidth,
+                  sheetHeight: data.sheetHeight,
                   cols: data.cols,
-                  rows: data.rows
+                  rows: data.rows,
+                  gapX: data.gapX,
+                  gapY: data.gapY,
+                  upOffsets: data.upOffsets,
+                  multiPageGang: data.multiPageGang
                 });
               }
               setInitialProductType('BOX');
