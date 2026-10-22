@@ -482,9 +482,10 @@ export default function ImpositionSection({
 
   // Auto-sync headerTrimHeight from detected content if headerHeightMM is available
   useEffect(() => {
-    if (detectedArtBox?.headerHeightMM) {
+    const hh = detectedArtBox?.dielineOnly?.headerHeightMM || detectedArtBox?.headerHeightMM;
+    if (hh) {
       const isInch = packagingUnit === 'inch';
-      setHeaderTrimHeight(isInch ? Math.round((detectedArtBox.headerHeightMM / 25.4) * 100) / 100 : Math.round(detectedArtBox.headerHeightMM * 10) / 10);
+      setHeaderTrimHeight(isInch ? Math.round((hh / 25.4) * 100) / 100 : Math.round(hh * 10) / 10);
     }
   }, [detectedArtBox, packagingUnit]);
 
@@ -494,11 +495,28 @@ export default function ImpositionSection({
       const isInch = packagingUnit === 'inch';
       const factor = isInch ? 1 / 25.4 : 1;
       const roundFactor = isInch ? 100 : 10;
-      const target = (trimHeader && detectedArtBox.dielineOnly) ? detectedArtBox.dielineOnly : detectedArtBox;
+
+      // Auto-enable trimHeader whenever dielineOnly or headerHeightMM is detected
+      if (detectedArtBox.dielineOnly) {
+        setTrimHeader(true);
+      }
+
+      const target = detectedArtBox.dielineOnly ? detectedArtBox.dielineOnly : detectedArtBox;
       setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
       setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
       setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
-      setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
+
+      // If dielineOnly is present, use its exact topMM (which trims off title block).
+      // Otherwise, if trimHeader is active, trim topMM by detected/default headerTrimHeight
+      if (detectedArtBox.dielineOnly) {
+        setTrimTop(Math.round(detectedArtBox.dielineOnly.topMM * factor * roundFactor) / roundFactor);
+      } else if (trimHeader) {
+        const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
+        setTrimTop(Math.round((target.topMM + hMM) * factor * roundFactor) / roundFactor);
+      } else {
+        setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
+      }
+
       setBoxGutterX(0);
       setBoxGutterY(0);
       setInterlockShiftX(0);
@@ -512,17 +530,29 @@ export default function ImpositionSection({
 
   // Fallback to fetch detected margins from backend if analysisData did not include vector content bounding box
   useEffect(() => {
-    if (partMode === 'BOX' && (!detectedArtBox || !detectedArtBox.leftMM) && jobId) {
+    if (partMode === 'BOX' && (!detectedArtBox || !detectedArtBox.leftMM || !detectedArtBox.dielineOnly) && jobId) {
       detectArtworkMargins(jobId).then((res) => {
         if (res.success && res.detected && res.margins) {
-          const target = (trimHeader && res.dielineMargins) ? res.dielineMargins : res.margins;
+          if (res.dielineMargins) {
+            setTrimHeader(true);
+          }
           const isInch = packagingUnit === 'inch';
           const factor = isInch ? 1 / 25.4 : 1;
           const roundFactor = isInch ? 100 : 10;
+          const target = res.dielineMargins ? res.dielineMargins : res.margins;
           setTrimLeft(Math.round(target.leftMM * factor * roundFactor) / roundFactor);
           setTrimRight(Math.round(target.rightMM * factor * roundFactor) / roundFactor);
           setTrimBottom(Math.round(target.bottomMM * factor * roundFactor) / roundFactor);
-          setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
+
+          if (res.dielineMargins) {
+            setTrimTop(Math.round(res.dielineMargins.topMM * factor * roundFactor) / roundFactor);
+          } else if (trimHeader) {
+            const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
+            setTrimTop(Math.round((target.topMM + hMM) * factor * roundFactor) / roundFactor);
+          } else {
+            setTrimTop(Math.round(target.topMM * factor * roundFactor) / roundFactor);
+          }
+
           setBoxGutterX(0);
           setBoxGutterY(0);
           setInterlockShiftX(0);
@@ -1300,6 +1330,10 @@ export default function ImpositionSection({
     }
 
     let trimmedTop = 0, trimmedBot = 0, trimmedLeft = 0, trimmedRight = 0;
+    const hMM_cad = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
+
+    // Auto-select trimHeader
+    setTrimHeader(true);
 
     if (targetBox) {
       // Bottom, left, right strictly match detected artwork footprint (bottom flaps preserved 100%)
@@ -1307,11 +1341,11 @@ export default function ImpositionSection({
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // Top trim: if trimHeader is ON and a detached header was detected (dielineOnly), trim to dielineOnly
-      if (trimHeader && targetBox.dielineOnly) {
+      // Top trim: if a detached header was detected (dielineOnly), trim to dielineOnly. Otherwise add header height.
+      if (targetBox.dielineOnly) {
         trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
       } else {
-        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
+        trimmedTop = Math.round((targetBox.topMM + hMM_cad) * factor * roundFactor) / roundFactor;
       }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -1360,9 +1394,11 @@ export default function ImpositionSection({
     setDetectingMargins(true);
     setMarginDetectionResult(null);
     setRemoveWhiteSpace(true);
+    setTrimHeader(true); // Automatically ensure title header is trimmed
     const isInch = packagingUnit === 'inch';
     const roundFactor = isInch ? 100 : 10;
     const factor = isInch ? 1 / 25.4 : 1;
+    const hMM = (parseFloat(headerTrimHeight) || (isInch ? 0.75 : 20.0)) * (isInch ? 25.4 : 1);
 
     let targetBox = detectedArtBox;
 
@@ -1388,11 +1424,11 @@ export default function ImpositionSection({
       trimmedLeft = Math.round(targetBox.leftMM * factor * roundFactor) / roundFactor;
       trimmedRight = Math.round(targetBox.rightMM * factor * roundFactor) / roundFactor;
 
-      // Top trim: if trimHeader is ON and dielineOnly exists, use dielineOnly
-      if (trimHeader && targetBox.dielineOnly) {
+      // Top trim: if dielineOnly exists, use dielineOnly. Otherwise add header height.
+      if (targetBox.dielineOnly) {
         trimmedTop = Math.round(targetBox.dielineOnly.topMM * factor * roundFactor) / roundFactor;
       } else {
-        trimmedTop = Math.round(targetBox.topMM * factor * roundFactor) / roundFactor;
+        trimmedTop = Math.round((targetBox.topMM + hMM) * factor * roundFactor) / roundFactor;
       }
     } else {
       const srcW = isInch ? (sourcePdfPageWidthMM / 25.4) : sourcePdfPageWidthMM;
@@ -1412,16 +1448,23 @@ export default function ImpositionSection({
     setTrimTop(trimmedTop);
     setTrimBottom(trimmedBot);
 
-    // Set 3.0 mm (0.118") gap between individual box ups
+    // Set 3.0 mm (0.118") horizontal gap between columns
     const g3 = isInch ? 0.118 : 3.0;
     setBoxGutterX(g3);
-    setBoxGutterY(g3);
-    setBoxGuttersLinked(true);
-    setInterlockShiftX(0);
-    setInterlockShiftY(0);
+
+    // Calculate flap nesting for vertical gutter between interlocking rows
+    // Flaps nest into opposing shoulders with exact 3.0 mm (0.118 in) clearance
+    const tuckVal = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
+    const clearanceMM = 3.0; // 3mm clearance
+    const nestY_MM = -Math.max(0, tuckVal - clearanceMM);
+    const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+    setBoxGutterY(nestY);
+    setBoxGuttersLinked(false);
 
     // Set INTERLOCKING mode (Row 0 at 0°, Row 1 at 180° so bottom flaps face each other with tight 3mm gap)
     setInterlockMode('INTERLOCKING');
+    setInterlockShiftX(0);
+    setInterlockShiftY(0);
 
     // Apply 0.25" (6.35 mm) sheet margins all around
     const qMargin = 6.35;
@@ -1439,7 +1482,7 @@ export default function ImpositionSection({
     const c = Math.max(1, parseInt(boxCols, 10) || 2);
     const r = Math.max(1, parseInt(boxRows, 10) || 2);
     const reqW = c * effW + (c - 1) * 3.0 + qMargin * 2;
-    const reqH = r * effH + (r - 1) * 3.0 + qMargin * 2;
+    const reqH = r * effH + (r - 1) * nestY_MM + qMargin * 2;
     const curW = parseFloat(sheetWidth) || 0;
     const curH = parseFloat(sheetHeight) || 0;
     if (curW < reqW - 1 || curH < reqH - 1) {
@@ -1455,7 +1498,7 @@ export default function ImpositionSection({
 
     setMarginDetectionResult({
       success: true,
-      msg: `✨ Tight Fit (3mm Interlock) Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Set 3.0 mm in-between gap & 180° interlocking rows.`
+      msg: `✨ Tight Fit (3mm Interlock) Applied! 1-Up content footprint: ${effWDisp} × ${effHDisp}. Flaps nested with 3.0 mm clearance & 3.0 mm column gap.`
     });
     setDetectingMargins(false);
   };
@@ -2265,6 +2308,7 @@ export default function ImpositionSection({
                       setBoxCols(2);
                       setBoxRows(2);
                       setInterlockMode('INTERLOCKING');
+                      setTrimHeader(true);
                       setDielineOverlay(true);
                       setSheetPreset('18×25"');
                       setSheetWidth(635);
@@ -2275,10 +2319,10 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
-                      // Set 3.0 mm (0.118") gap
+                      // Set 3.0 mm (0.118") horizontal gap and exact 3mm flap nesting
                       setBoxGutterX(0.118);
-                      setBoxGutterY(0.118);
-                      setBoxGuttersLinked(true);
+                      setBoxGutterY(-1.38);
+                      setBoxGuttersLinked(false);
                       // Apply 0.25" (6.35 mm) sheet margins
                       const qMargin = 6.35;
                       setMarginTop(qMargin);
@@ -2302,10 +2346,11 @@ export default function ImpositionSection({
                       setBoxWidth(2.56);
                       setBoxHeight(5.12);
                       setGlueTabWidth(0.59);
-                      setTuckFlapHeight(1.18);
+                      setTuckFlapHeight(1.38); // 35mm
                       setBoxCols(2);
                       setBoxRows(2);
-                      setInterlockMode('STANDARD');
+                      setInterlockMode('INTERLOCKING');
+                      setTrimHeader(true);
                       setDielineOverlay(true);
                       setSheetPreset('20×30"');
                       setSheetWidth(508);
@@ -2316,15 +2361,17 @@ export default function ImpositionSection({
                       setCameraMarks(false);
                       setFoldMarks(false);
                       setDigitalBarcode(false);
-                      setBoxGutterX(0);
-                      setBoxGutterY(0);
+                      // Set 3.0 mm (0.118") horizontal gap and exact 3mm flap nesting (-32mm / -1.26")
+                      setBoxGutterX(0.118);
+                      setBoxGutterY(-1.26);
+                      setBoxGuttersLinked(false);
                       // Apply 0.25" (6.35 mm) sheet margins
                       const qMargin = 6.35;
                       setMarginTop(qMargin);
                       setMarginBottom(qMargin);
                       setMarginLeft(qMargin);
                       setMarginRight(qMargin);
-                      handleTightenCadPack();
+                      handleTightFit3mm();
                     }}
                     className="w-full py-1.5 px-2 rounded-xl bg-gradient-to-r from-blue-600/30 to-indigo-600/30 border border-blue-500/50 hover:border-blue-400 text-blue-300 hover:text-white text-[10px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
                   >
@@ -2746,19 +2793,45 @@ export default function ImpositionSection({
                   <button
                     type="button"
                     onClick={() => {
+                      const isInch = packagingUnit === 'inch';
+                      const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
+                      const clearance = 3.0; // exact 3mm clearance
+                      const nestY_MM = -Math.max(0, tuck - clearance);
+                      const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+                      const g3 = isInch ? 0.118 : 3.0;
+                      handleBoxGutterXChange(g3);
+                      handleBoxGutterYChange(nestY);
+                      setInterlockMode('INTERLOCKING');
+                      setTrimHeader(true);
+                    }}
+                    className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
+                      boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                        ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold border-indigo-400 shadow-indigo-600/40'
+                        : 'bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border-indigo-600'
+                    }`}
+                    title="Nests interlocking tuck flaps with exact 3.0 mm die clearance and 3.0 mm column spacing"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>{packagingUnit === 'inch' ? '🔄 3mm Flap Nesting (Interlock)' : '🔄 3.0 mm Flap Nesting (Interlock)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       const val = packagingUnit === 'inch' ? 0.118 : 3.0;
                       handleBoxGutterXChange(val);
                       handleBoxGutterYChange(val);
+                      setBoxGuttersLinked(true);
                     }}
                     className={`px-3 py-1 rounded-lg font-mono text-[10px] font-bold border transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ${
-                      Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
+                      boxGutterY > 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.118 : 3.0)) < 0.01
                         ? 'bg-blue-500 text-slate-950 border-blue-400 shadow-blue-500/30 font-extrabold'
                         : 'bg-blue-950/70 hover:bg-blue-900/80 text-blue-300 border-blue-600'
                     }`}
-                    title="Strict 3.0 mm (0.118 in) uniform space between adjacent ups (Tight Fit Interlock)"
+                    title="Strict 3.0 mm (0.118 in) uniform space between adjacent ups (Straight Grid)"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>{packagingUnit === 'inch' ? '0.118" (3.0 mm Gap - Tight Fit)' : '3.0 mm Gap (Tight Fit)'}</span>
+                    <span>{packagingUnit === 'inch' ? '↔️ 0.118" (3.0 mm Straight Grid)' : '↔️ 3.0 mm Gap (Straight Grid)'}</span>
                   </button>
 
                   <button
@@ -2832,9 +2905,11 @@ export default function ImpositionSection({
                       const nestY = -Math.max(0, tuck - clearance);
                       const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
                       handleBoxGutterYChange(rounded);
+                      setInterlockMode('INTERLOCKING');
+                      setTrimHeader(true);
                     }}
                     className={`px-2.5 py-1 rounded-lg font-mono text-[10px] border transition-all cursor-pointer shadow-sm flex items-center gap-1 ${
-                      boxGutterY < 0
+                      boxGutterY < 0 && Math.abs(parseFloat(boxGutterX) - (packagingUnit === 'inch' ? 0.197 : 5.0)) < 0.01
                         ? 'bg-indigo-600 text-white font-extrabold border-indigo-400 shadow-indigo-600/30'
                         : 'bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 border-indigo-700'
                     }`}
@@ -3030,14 +3105,34 @@ export default function ImpositionSection({
                         type="button"
                         onClick={() => {
                           const isInch = packagingUnit === 'inch';
+                          const tuck = (parseFloat(tuckFlapHeight) || (isInch ? 1.38 : 35)) * (isInch ? 25.4 : 1);
+                          const nestY_MM = -Math.max(0, tuck - 3.0);
+                          const rounded = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+                          handleBoxGutterYChange(rounded);
+                          setInterlockMode('INTERLOCKING');
+                          setTrimHeader(true);
+                        }}
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
+                          boxGutterY < 0 ? 'bg-indigo-600 text-white font-bold border-indigo-400' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                        }`}
+                        title="Nest interlocking flaps with exact 3.0 mm clearance"
+                      >
+                        Nest (3mm)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const isInch = packagingUnit === 'inch';
                           const tuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
                           const clearance = isInch ? 0.197 : 5.0;
                           const nestY = -Math.max(0, tuck - clearance);
                           const rounded = isInch ? Math.round(nestY * 100) / 100 : Math.round(nestY * 10) / 10;
                           handleBoxGutterYChange(rounded);
+                          setInterlockMode('INTERLOCKING');
+                          setTrimHeader(true);
                         }}
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                          boxGutterY < 0 ? 'bg-indigo-600 text-white font-bold border-indigo-400' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
+                          boxGutterY < 0 ? 'bg-indigo-950 border-indigo-600 text-indigo-300' : 'bg-[#10141D] border-[#1E293B] text-slate-400 hover:text-white'
                         }`}
                         title="Nest interlocking flaps with exact 5.0 mm clearance"
                       >

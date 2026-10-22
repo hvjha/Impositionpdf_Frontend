@@ -311,6 +311,7 @@ function BoxCellDielineOverlay({ x, y, w, h, rot = 0, boxStyle = 'RTE', dielineO
           fill="none"
           stroke="#EF4444"
           strokeWidth="0.5"
+          strokeOpacity={boxParams?.gutterY < 0 ? 0.35 : 1}
         />
         {/* Corner registration crosshairs */}
         <path
@@ -1626,8 +1627,8 @@ export default function SheetPreview({
                       y={pad + cell.y}
                       width={cell.w}
                       height={cell.h}
-                      fill={hasArtwork ? '#FFFFFF' : '#F8FAFC'}
-                      stroke="#94A3B8"
+                      fill={hasArtwork ? 'none' : '#F8FAFC'}
+                      stroke={hasArtwork && gy < 0 ? 'none' : '#94A3B8'}
                       strokeWidth="0.3"
                     />
 
@@ -1644,7 +1645,7 @@ export default function SheetPreview({
                       const hasCrop = (cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0) && (viewW < srcW - 2 || viewH < srcH - 2);
 
                       return (
-                        <g transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}>
+                        <g transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined} style={hasArtwork ? { mixBlendMode: 'multiply' } : undefined}>
                           {hasCrop ? (
                             <svg
                               x={pad + cell.x}
