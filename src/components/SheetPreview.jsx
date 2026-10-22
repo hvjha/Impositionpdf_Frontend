@@ -905,8 +905,11 @@ export default function SheetPreview({
   // ─── Total Signatures / Forms ───────────────────────────────────────────
   const layoutPagesCount = parseInt(selectedLayout, 10) || 16;
   const totalBookPages = parseInt(totalPages, 10) || 16;
+  const isMultiPageGang = Boolean(multiPageGang || boxParams?.multiPageGang);
   const totalSignatures = partMode === 'BOX'
-    ? Math.max(1, totalBookPages)
+    ? (isMultiPageGang && totalBookPages > 1
+        ? Math.max(1, Math.ceil(totalBookPages / (boxLayout.c * boxLayout.r)))
+        : Math.max(1, totalBookPages))
     : Math.max(1, Math.ceil(totalBookPages / layoutPagesCount));
 
   // Resolved page cells for TEXT mode
@@ -1010,7 +1013,9 @@ export default function SheetPreview({
           ) : partMode === 'BOX' ? (
             <span className="flex items-center gap-1.5 flex-wrap">
               <Package className="w-3.5 h-3.5 text-emerald-400" />
-              <strong className="text-emerald-300">Box Packaging ({boxLayout.c}×{boxLayout.r} = {boxLayout.c * boxLayout.r}-Up)</strong>
+              <strong className="text-emerald-300">
+                Box Packaging {totalSignatures > 1 ? `(Sheet ${(parseInt(sheetIndex, 10) || 0) + 1} of ${totalSignatures})` : ''} ({boxLayout.c}×{boxLayout.r} = {boxLayout.c * boxLayout.r}-Up)
+              </strong>
               <span className="text-slate-500">•</span>
               <span className="text-cyan-400 font-semibold bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/60">
                 Sheet: {sw} × {sh} mm
@@ -2663,7 +2668,11 @@ export default function SheetPreview({
                     : 'bg-[#141C2A] border-[#233045] text-slate-400 hover:text-slate-200 hover:bg-[#1A2436]'
                   }`}
               >
-                {partMode === 'BOX' ? `Sheet ${i + 1} (Page ${i + 1})` : `Sig ${i + 1} (${sigStart}–${sigEnd})`}
+                {partMode === 'BOX'
+                  ? (isMultiPageGang && totalBookPages > 1
+                      ? `Sheet ${i + 1} (${i * (boxLayout.c * boxLayout.r) + 1 === Math.min(totalBookPages, (i + 1) * (boxLayout.c * boxLayout.r)) ? `Page ${i * (boxLayout.c * boxLayout.r) + 1}` : `Pages ${i * (boxLayout.c * boxLayout.r) + 1}–${Math.min(totalBookPages, (i + 1) * (boxLayout.c * boxLayout.r))}`})`
+                      : `Sheet ${i + 1} (Page ${i + 1})`)
+                  : `Sig ${i + 1} (${sigStart}–${sigEnd})`}
               </button>
             );
           })}
