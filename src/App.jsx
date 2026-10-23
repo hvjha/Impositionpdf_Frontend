@@ -68,6 +68,26 @@ export default function App() {
   const [initialProductType, setInitialProductType] = useState('BOX');
   const [initialSheetConfig, setInitialSheetConfig] = useState(null);
 
+  // ─── Active Document State (Derived from activeJob, uploadedFile & analysisData) ─────
+  const activeDocument = useMemo(() => {
+    if (activeJob) {
+      return {
+        name: activeJob.originalFileName || uploadedFile?.name || 'Artwork.pdf',
+        pageCount: analysisData?.pageCount || activeJob.pageCount || 1,
+        fileSize: activeJob.fileSize || uploadedFile?.size || 0,
+        jobId: activeJob.jobId
+      };
+    }
+    if (uploadedFile) {
+      return {
+        name: uploadedFile.name,
+        pageCount: analysisData?.pageCount || 1,
+        fileSize: uploadedFile.size || 0
+      };
+    }
+    return null;
+  }, [activeJob, uploadedFile, analysisData]);
+
   // ─── Sidebar collapse state ─────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -384,6 +404,7 @@ export default function App() {
                     analysisData={analysisData}
                     uploadedFile={uploadedFile}
                     activeJob={activeJob}
+                    activeDocument={activeDocument}
                     onImpositionSuccess={handleImpositionSuccess}
                     onProceedToOutput={() => setCurrentStep(6)}
                     customKeylines={customKeylines}

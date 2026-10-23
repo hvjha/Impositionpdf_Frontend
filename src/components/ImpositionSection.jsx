@@ -282,6 +282,7 @@ export default function ImpositionSection({
   analysisData,
   uploadedFile,
   activeJob,
+  activeDocument = null,
   onImpositionSuccess,
   onProceedToOutput,
   customKeylines = [],
@@ -793,7 +794,7 @@ export default function ImpositionSection({
 
   // ─── Prepress Calculations ──────────────────────────────────────────────
   const isBoxJob = partMode === 'BOX';
-  const sourcePdfPageCount = parseInt(analysisData?.pageCount || activeDocument?.pageCount || totalPages, 10) || 1;
+  const sourcePdfPageCount = parseInt(analysisData?.pageCount || activeDocument?.pageCount || activeJob?.pageCount || totalPages, 10) || 1;
   const isMultiPageGangActive = Boolean(isBoxJob && multiPageGang && sourcePdfPageCount > 1);
   const boxPagesPerSheet = Math.max(1, (parseInt(boxCols, 10) || 2) * (parseInt(boxRows, 10) || 2));
 
