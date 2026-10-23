@@ -634,6 +634,7 @@ export default function SheetPreview({
   const [isDragRepositionMode, setIsDragRepositionMode] = useState(false);
   const [draggingTarget, setDraggingTarget] = useState(null); // null | { type: 'UP', upIdx, clientX, clientY, initialX, initialY, baseX, baseY, cellW, cellH } | { type: 'LAYOUT', clientX, clientY, initialX, initialY }
   const [hoverSwapTarget, setHoverSwapTarget] = useState(null);
+  const [liveDragOffset, setLiveDragOffset] = useState(null); // null | { upIdx, x, y } for 60fps real-time dragging preview
   const svgRef = useRef(null);
 
   const isDuplex = workStyle !== 'SIMPLEX' && workStyle !== 'SINGLE_SIDED';
@@ -830,10 +831,11 @@ export default function SheetPreview({
           shiftY = parseFloat(boxParams?.interlockShiftY || 0);
         }
 
-        // Individual up offset
+        // Individual up offset (liveDragOffset takes priority for real-time 60fps movement while dragging)
         const indOffset = upOffsets?.[idx] || upOffsets?.[String(idx)] || { x: 0, y: 0 };
-        const upOffsetX = parseFloat(indOffset.x || 0);
-        const upOffsetY = parseFloat(indOffset.y || 0);
+        const isThisCellLive = liveDragOffset && liveDragOffset.upIdx === idx;
+        const upOffsetX = isThisCellLive ? liveDragOffset.x : parseFloat(indOffset.x || 0);
+        const upOffsetY = isThisCellLive ? liveDragOffset.y : parseFloat(indOffset.y || 0);
 
         // Multi-page page allocation
         let assignedPage = activeSide === 'FRONT'
@@ -907,7 +909,12 @@ export default function SheetPreview({
       printableW, printableH, efficiencyPct, wastePct,
       minX, maxX, minY, maxY, layoutW_mm, layoutH_mm, isInch, dimW_text, dimH_text, sheetSizeText
     };
-  }, [sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight, gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages, partMode, sheetIndex, pageViewports]);
+  }, [
+    sheetWidth, sheetHeight, marginTop, marginBottom, marginLeft, marginRight,
+    gutterX, gutterY, bleed, columns, rows, boxParams, activeSide, totalPages,
+    partMode, sheetIndex, pageViewports, upOffsets, liveDragOffset, layoutShiftX,
+    layoutShiftY, pageAllocation, multiPageGang, pageRotation
+  ]);
 
   // ─── Total Signatures / Forms ───────────────────────────────────────────
   const layoutPagesCount = parseInt(selectedLayout, 10) || 16;
@@ -962,13 +969,13 @@ export default function SheetPreview({
         const rawY = draggingTarget.initialY + dy;
 
         // Restrict drag inside available sheet printable space
-        const ml = boxLayout.ml;
-        const mr = boxLayout.mr;
-        const mt = boxLayout.mt;
-        const mb = boxLayout.mb;
-        const minX = Math.min(ml, 0);
+        const ml = boxLayout.ml || 0;
+        const mr = boxLayout.mr || 0;
+        const mt = boxLayout.mt || 0;
+        const mb = boxLayout.mb || 0;
+        const minX = Math.max(0, ml);
         const maxX = Math.max(minX, boxLayout.sw - mr - draggingTarget.cellW);
-        const minY = Math.min(mt, 0);
+        const minY = Math.max(0, mt);
         const maxY = Math.max(minY, boxLayout.sh - mb - draggingTarget.cellH);
 
         const targetAbsX = Math.max(minX, Math.min(maxX, draggingTarget.baseX + rawX));
@@ -976,6 +983,8 @@ export default function SheetPreview({
         const clampedX = Math.round((targetAbsX - draggingTarget.baseX) * 10) / 10;
         const clampedY = Math.round((targetAbsY - draggingTarget.baseY) * 10) / 10;
 
+        // Immediately update live local drag state for instantaneous preview rendering
+        setLiveDragOffset({ upIdx: draggingTarget.upIdx, x: clampedX, y: clampedY });
         onUpOffsetChange?.(draggingTarget.upIdx, clampedX, clampedY);
 
         // Check if dragging up overlaps another up's slot for position swap
@@ -985,8 +994,8 @@ export default function SheetPreview({
 
         for (const cell of boxLayout.cells) {
           if (cell.idx === draggingTarget.upIdx) continue;
-          const baseBX = cell.x - cell.upOffsetX;
-          const baseBY = cell.y - cell.upOffsetY;
+          const baseBX = cell.x - (cell.upOffsetX || 0);
+          const baseBY = cell.y - (cell.upOffsetY || 0);
           if (
             curCenterX >= baseBX &&
             curCenterX <= baseBX + cell.w &&
@@ -1006,11 +1015,16 @@ export default function SheetPreview({
     };
 
     const handleMouseUp = () => {
-      if (draggingTarget && draggingTarget.type === 'UP' && hoverSwapTarget !== null) {
-        onSwapUps?.(draggingTarget.upIdx, hoverSwapTarget);
+      if (draggingTarget && draggingTarget.type === 'UP') {
+        if (hoverSwapTarget !== null) {
+          onSwapUps?.(draggingTarget.upIdx, hoverSwapTarget);
+        } else if (liveDragOffset) {
+          onUpOffsetChange?.(draggingTarget.upIdx, liveDragOffset.x, liveDragOffset.y);
+        }
       }
       setDraggingTarget(null);
       setHoverSwapTarget(null);
+      setLiveDragOffset(null);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -1019,7 +1033,7 @@ export default function SheetPreview({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingTarget, hoverSwapTarget, vbW, vbH, boxLayout, onUpOffsetChange, onLayoutShiftChange, onSwapUps]);
+  }, [draggingTarget, hoverSwapTarget, liveDragOffset, vbW, vbH, boxLayout, onUpOffsetChange, onLayoutShiftChange, onSwapUps]);
 
   return (
     <div className="w-full">
@@ -1846,23 +1860,31 @@ export default function SheetPreview({
              ═════════════════════════════════════════════════════════════════ */}
           {partMode === 'BOX' && (
             <g>
-              {boxLayout.cells.map((cell) => {
-                const pageNum = cell.page;
-                const thumbUrl = (pageNum && thumbnails && thumbnails[pageNum - 1]) || null;
-                const hasArtwork = Boolean(thumbUrl && showArtwork);
-                const cx = pad + cell.x + cell.w / 2;
-                const cy = pad + cell.y + cell.h / 2;
+              {(() => {
+                const sortedCells = [...boxLayout.cells].sort((a, b) => {
+                  if (draggingTarget?.type === 'UP' && a.idx === draggingTarget.upIdx) return 1;
+                  if (draggingTarget?.type === 'UP' && b.idx === draggingTarget.upIdx) return -1;
+                  return a.idx - b.idx;
+                });
 
-                const isCellSelected = selectedUpIndex === cell.idx;
-                const isCellDragging = draggingTarget?.type === 'UP' && draggingTarget?.upIdx === cell.idx;
+                return sortedCells.map((cell) => {
+                  const pageNum = cell.page || 1;
+                  const thumbUrl = (thumbnails && (thumbnails[pageNum - 1] || thumbnails[0])) || null;
+                  const hasArtwork = Boolean(thumbUrl && showArtwork);
+                  const cx = pad + cell.x + cell.w / 2;
+                  const cy = pad + cell.y + cell.h / 2;
 
-                return (
-                  <g
-                    key={`box-cell-${cell.idx}`}
-                    style={{
-                      cursor: isCellDragging ? 'grabbing' : 'grab',
-                      touchAction: 'none'
-                    }}
+                  const isCellSelected = selectedUpIndex === cell.idx;
+                  const isCellDragging = draggingTarget?.type === 'UP' && draggingTarget?.upIdx === cell.idx;
+
+                  return (
+                    <g
+                      key={`box-cell-${cell.idx}`}
+                      style={{
+                        cursor: isCellDragging ? 'grabbing' : 'grab',
+                        touchAction: 'none',
+                        filter: isCellDragging ? 'drop-shadow(0 10px 24px rgba(0,0,0,0.55))' : undefined
+                      }}
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelectUp?.(cell.idx);
@@ -1938,16 +1960,41 @@ export default function SheetPreview({
                       </g>
                     ) : (
                       <>
-                        {/* Cell slot rectangle */}
+                        {/* Solid pure white card background - ensures artwork never disappears while dragging */}
                         <rect
                           x={pad + cell.x}
                           y={pad + cell.y}
                           width={cell.w}
                           height={cell.h}
-                          fill={hasArtwork ? 'none' : '#F8FAFC'}
-                          stroke={hasArtwork && boxLayout.gy < 0 ? 'none' : (isCellSelected ? '#06B6D4' : '#94A3B8')}
-                          strokeWidth={isCellSelected ? "0.6" : "0.3"}
+                          fill="#FFFFFF"
+                          stroke={isCellSelected ? '#06B6D4' : (hasArtwork && boxLayout.gy < 0 ? 'none' : '#94A3B8')}
+                          strokeWidth={isCellSelected ? "0.8" : "0.3"}
+                          rx="0.5"
                         />
+
+                        {/* Fallback state when artwork is loading or unavailable */}
+                        {!hasArtwork && (
+                          <g pointerEvents="none">
+                            {thumbnailsLoading ? (
+                              <g transform={`translate(${pad + cell.x + cell.w / 2}, ${pad + cell.y + cell.h / 2})`}>
+                                <rect x="-38" y="-12" width="76" height="24" rx="4" fill="#0F172A" fillOpacity="0.9" stroke="#06B6D4" strokeWidth="0.8" />
+                                <circle cx="-22" cy="0" r="3.5" fill="none" stroke="#06B6D4" strokeWidth="1.2" strokeDasharray="12 6" className="animate-spin" />
+                                <text x="3" y="3.5" textAnchor="middle" fontSize="3.5" fontFamily="monospace" fill="#38BDF8" fontWeight="bold">
+                                  LOADING PREVIEW...
+                                </text>
+                              </g>
+                            ) : (
+                              <g transform={`translate(${pad + cell.x + cell.w / 2}, ${pad + cell.y + cell.h / 2})`}>
+                                <text x="0" y="-2" textAnchor="middle" fontSize="5" fontFamily="monospace" fontWeight="bold" fill="#334155">
+                                  UP #{cell.idx + 1}
+                                </text>
+                                <text x="0" y="5" textAnchor="middle" fontSize="3.5" fontFamily="monospace" fill="#64748B">
+                                  {cell.w.toFixed(1)} × {cell.h.toFixed(1)} mm
+                                </text>
+                              </g>
+                            )}
+                          </g>
+                        )}
 
                         {/* Active Selection / Dragging Highlight Ring */}
                         {(isCellSelected || isCellDragging) && (
@@ -1958,8 +2005,8 @@ export default function SheetPreview({
                             height={cell.h + 2.4}
                             fill="none"
                             stroke={isCellDragging ? "#F59E0B" : "#06B6D4"}
-                            strokeWidth="1.2"
-                            strokeDasharray={isCellDragging ? "2 2" : "4 2"}
+                            strokeWidth={isCellDragging ? "1.8" : "1.2"}
+                            strokeDasharray={isCellDragging ? "3 2" : "4 2"}
                             rx="1.5"
                             pointerEvents="none"
                           />
@@ -1978,7 +2025,10 @@ export default function SheetPreview({
                           const hasCrop = (cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0) && (viewW < srcW - 2 || viewH < srcH - 2);
 
                           return (
-                            <g transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined} style={hasArtwork ? { mixBlendMode: 'multiply' } : undefined}>
+                            <g
+                              transform={cell.rot ? `rotate(${cell.rot} ${cx} ${cy})` : undefined}
+                              style={isCellDragging ? { opacity: 0.95 } : (hasArtwork ? { mixBlendMode: 'multiply' } : undefined)}
+                            >
                               {hasCrop ? (
                                 <svg
                                   x={pad + cell.x}
@@ -2111,7 +2161,8 @@ export default function SheetPreview({
                     )}
                   </g>
                 );
-              })}
+              });
+            })()}
 
               {/* ═════════════════════════════════════════════════════════════════
                   INTER-BOX GAP CAD DIMENSIONS (STRICT UNIFORM GAP VERIFICATION)

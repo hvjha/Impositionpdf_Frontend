@@ -34,14 +34,14 @@ export function calculatePressSheetUps(itemWidthMM, itemHeightMM, options = {}) 
   const itemW = Math.max(1, parseFloat(itemWidthMM) || 100);
   const itemH = Math.max(1, parseFloat(itemHeightMM) || 100);
   const marginMM = options.marginMM ?? 6.35; // 0.25 in / 6.35 mm press margins
-  // Inter-object spacing strictly 5.0 mm for packaging box jobs
-  const gutterMM = options.gutterMM ?? (options.productType === 'BOX' ? 5.0 : 3.0);
+  // Inter-object spacing strictly 3.0 mm for packaging box jobs
+  const gutterMM = options.gutterMM ?? 3.0;
   const productType = options.productType || 'BOX';
 
   const rawResults = [];
 
   // ─── 1. DYNAMIC INPUT-TAILORED SHEET SIZES (Zero Wasted Space) ───────────
-  // Automatically compute custom sheet sizes tailored to the exact artwork dimensions + 5mm gap
+  // Automatically compute custom sheet sizes tailored to the exact artwork dimensions + 3mm gap
   if (productType === 'BOX') {
     const pressSideMargin = 8.0;   // 8 mm each side guide (16 mm total)
     const pressGripperMargin = 12.0; // 12 mm gripper lead edge
@@ -76,7 +76,7 @@ export function calculatePressSheetUps(itemWidthMM, itemHeightMM, options = {}) 
       sheetHeight: customH4_mm,
       efficiency: eff4,
       wastePercent: 100 - eff4,
-      layoutText: '2 × 2 (Tight 5mm)',
+      layoutText: '2 × 2 (Tight 3mm)',
       isCustomFit: true,
       score: eff4 * 1.5 + 4 * 10 // High score for perfect tailored fit
     });

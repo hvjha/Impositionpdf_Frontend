@@ -17,7 +17,12 @@ import {
 import { uploadPdfFile, analyzePdfJob } from '../services/api';
 import ProductAndSheetModal from './ProductAndSheetModal';
 
-export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKeylineStudio }) {
+export default function UploadSection({ 
+  onUploadSuccess, 
+  onOpenHistory, 
+  onOpenKeylineStudio,
+  onOpenGangModal = null
+}) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('Fast Ingesting Source PDF...');
@@ -299,6 +304,7 @@ export default function UploadSection({ onUploadSuccess, onOpenHistory, onOpenKe
           job={uploadedJob}
           analysisData={uploadedAnalysis}
           onProceed={handleProceedFromSetup}
+          onOpenGangModal={onOpenGangModal}
         />
       )}
     </div>

@@ -80,14 +80,30 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
           cMapUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/cmaps/',
           cMapPacked: true,
           standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@4.10.38/standard_fonts/',
-          maxImageSize: -1 // Disable raster image size limits for high-res print sheets
+          maxImageSize: 1024 * 1024 * 32, // Safe 32MP limit prevents memory allocation crashes
+          isEvalSupported: false
         };
 
-        const loadingTask = pdfjsLib.getDocument(docParams);
-        taskRef.current = loadingTask;
+        let pdf;
+        try {
+          const loadingTask = pdfjsLib.getDocument(docParams);
+          taskRef.current = loadingTask;
+          pdf = await loadingTask.promise;
+        } catch (workerErr) {
+          console.warn('[PDF Thumbnails] Primary worker load failed, retrying in main-thread safe mode:', workerErr);
+          if (cancelled) return;
+          // Fallback: Disable worker to prevent worker thread crashes on complex high-res graphics
+          const fallbackParams = {
+            ...docParams,
+            disableWorker: true,
+            verbosity: 0
+          };
+          const fallbackTask = pdfjsLib.getDocument(fallbackParams);
+          taskRef.current = fallbackTask;
+          pdf = await fallbackTask.promise;
+        }
 
-        const pdf = await loadingTask.promise;
-        if (cancelled) return;
+        if (cancelled || !pdf) return;
 
         const total = pdf.numPages;
         setPageCount(total);
@@ -118,16 +134,23 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
           });
 
           // Intelligent scaling for high-res images:
-          // Keep canvas bounded between 240px and 600px to ensure crisp rendering
+          // Keep canvas bounded between 240px and 720px to ensure crisp rendering
           // without triggering browser canvas memory limits (which cause black/blank previews)
-          const targetWidth = Math.min(600, Math.max(240, thumbWidth));
-          const scale = targetWidth / Math.max(10, viewport.width);
+          const maxCanvasSize = 720;
+          const targetWidth = Math.min(maxCanvasSize, Math.max(240, thumbWidth));
+          let scale = targetWidth / Math.max(10, viewport.width);
+          if (viewport.height * scale > maxCanvasSize) {
+            scale = maxCanvasSize / Math.max(10, viewport.height);
+          }
+          if (viewport.width * scale > maxCanvasSize) {
+            scale = maxCanvasSize / Math.max(10, viewport.width);
+          }
           const scaledViewport = page.getViewport({ scale });
 
-          // Create offscreen canvas
+          // Create offscreen canvas with safe dimensions
           const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.floor(scaledViewport.width));
-          canvas.height = Math.max(1, Math.floor(scaledViewport.height));
+          canvas.width = Math.max(1, Math.min(maxCanvasSize, Math.floor(scaledViewport.width)));
+          canvas.height = Math.max(1, Math.min(maxCanvasSize, Math.floor(scaledViewport.height)));
           const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
 
           // Fill clean white background
@@ -143,23 +166,23 @@ export default function usePdfThumbnails(pdfSource, maxPages = 64, thumbWidth = 
             });
 
             await renderTask.promise;
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
             thumbs.push(dataUrl);
           } catch (renderErr) {
             console.warn(`[PDF Thumbnails] Rendering failed for page ${i}, generating high-res vector fallback:`, renderErr);
-            // High-contrast fallback so preview is NEVER blank
+            // High-contrast vector fallback so preview is NEVER blank
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#EF4444';
+            ctx.strokeStyle = '#06B6D4';
             ctx.lineWidth = 2;
             ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
             ctx.fillStyle = '#0F172A';
             ctx.font = 'bold 12px monospace';
             ctx.textAlign = 'center';
             ctx.fillText(`PAGE ${i} (${Math.round(viewport.width * 25.4 / 72)} × ${Math.round(viewport.height * 25.4 / 72)} mm)`, canvas.width / 2, canvas.height / 2 - 6);
-            ctx.fillStyle = '#64748B';
+            ctx.fillStyle = '#0284C7';
             ctx.font = '10px monospace';
-            ctx.fillText('High-Res Vector Artwork Loaded', canvas.width / 2, canvas.height / 2 + 10);
+            ctx.fillText('High-Res Prepress Artwork', canvas.width / 2, canvas.height / 2 + 10);
             thumbs.push(canvas.toDataURL('image/png'));
           }
 

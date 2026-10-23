@@ -24,18 +24,18 @@ export default function ProductAndSheetModal({
   file,
   job,
   analysisData,
-  onProceed
+  onProceed,
+  onOpenGangModal = null
 }) {
   // ─── Unit preference: inch or mm ───────────────────────────────────────
   const [unit, setUnit] = useState('inch');
 
   // ─── Product Selection: 'BOX' | 'COVER' | 'TEXT' ────────────────────────
-  // Default to 'BOX' for 1-page carton PDFs, or 'TEXT' if > 4 pages
-  const [productType, setProductType] = useState(() => {
-    const pageCount = analysisData?.pageCount || 1;
-    if (pageCount > 4) return 'TEXT';
-    return 'BOX';
-  });
+  // Default to 'BOX' for packaging cartons
+  const [productType, setProductType] = useState('BOX');
+
+  // ─── Multi-Page Packaging Gang Run State (Auto-prompted for multi-page box PDFs) ──
+  const [multiPageGangMode, setMultiPageGangMode] = useState(true);
 
   // Extract detected artwork dimensions from analysis data
   const artworkDims = useMemo(() => {
@@ -84,28 +84,36 @@ export default function ProductAndSheetModal({
     };
   }, [analysisData, file, job]);
 
-  // Calculate press sheet UPS options based on current product type & artwork dimensions
+  // Calculate press sheet UPS options based on current product type & artwork dimensions with 3.0mm gaps
   const sheetOptions = useMemo(() => {
     return calculatePressSheetUps(artworkDims.widthMM, artworkDims.heightMM, {
       productType,
-      marginMM: 6.35
+      marginMM: 6.35,
+      gutterMM: 3.0 // Exact 3.0 mm uniform die spacing
     });
   }, [artworkDims.widthMM, artworkDims.heightMM, productType]);
 
-  // Selected Sheet State (default to Rank 1 Best Imposition)
+  // Selected Sheet State (default to Rank 1 Best Imposition or sheet fitting all pages)
   const [selectedSheetName, setSelectedSheetName] = useState('');
 
-  // Auto-sync selected sheet whenever options update - selects the Rank 1 (Best Imposition) by default
+  // Auto-sync selected sheet: if multi-page gang is active, prioritize sheets where ups >= pageCount (e.g. 6-up for 5 pages)
   useEffect(() => {
     if (sheetOptions.length > 0) {
-      const preferred = sheetOptions.find(s => s.rank === 1) ||
-                        sheetOptions.find(s => s.name === '20×28"') ||
-                        sheetOptions[0];
+      let preferred = null;
+      if (productType === 'BOX' && artworkDims.pageCount > 1 && multiPageGangMode) {
+        preferred = sheetOptions.find(s => s.ups >= artworkDims.pageCount) ||
+                    sheetOptions.find(s => s.rank === 1);
+      }
+      if (!preferred) {
+        preferred = sheetOptions.find(s => s.rank === 1) ||
+                    sheetOptions.find(s => s.name === '20×28"') ||
+                    sheetOptions[0];
+      }
       if (preferred) {
         setSelectedSheetName(preferred.name);
       }
     }
-  }, [sheetOptions]);
+  }, [sheetOptions, productType, artworkDims.pageCount, multiPageGangMode]);
 
   const activeSheet = useMemo(() => {
     return sheetOptions.find(s => s.name === selectedSheetName) || sheetOptions[0] || null;
@@ -126,7 +134,10 @@ export default function ProductAndSheetModal({
         rows: activeSheet.rows,
         ups: activeSheet.ups,
         tech: activeSheet.tech,
-        label: activeSheet.label
+        label: activeSheet.label,
+        gapX: 3.0,
+        gapY: 3.0,
+        multiPageGang: Boolean(productType === 'BOX' && artworkDims.pageCount > 1 && multiPageGangMode)
       },
       analysisData,
       skipToImposition: true
@@ -136,7 +147,12 @@ export default function ProductAndSheetModal({
   const handleStepByStep = () => {
     onProceed({
       productType,
-      sheetConfig: activeSheet,
+      sheetConfig: {
+        ...activeSheet,
+        gapX: 3.0,
+        gapY: 3.0,
+        multiPageGang: Boolean(productType === 'BOX' && artworkDims.pageCount > 1 && multiPageGangMode)
+      },
       analysisData,
       skipToImposition: false
     });
@@ -369,6 +385,95 @@ export default function ProductAndSheetModal({
             </div>
           </div>
 
+          {/* ─── Multi-Page Packaging Gang Run Interactive Question ─── */}
+          {productType === 'BOX' && artworkDims.pageCount > 1 && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/70 via-slate-900 to-cyan-950/60 border border-emerald-500/50 shadow-xl space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white font-mono m-0 flex items-center gap-2">
+                      <span>Multi-Page Packaging Input Detected</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700">
+                        {artworkDims.pageCount} Pages / Variations
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-300 font-mono m-0 mt-0.5">
+                      Do you want to impose all {artworkDims.pageCount} pages onto a single sheet layout (Combo Gang Run)?
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* Option A: Impose All Pages */}
+                <button
+                  type="button"
+                  onClick={() => setMultiPageGangMode(true)}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    multiPageGangMode
+                      ? 'bg-emerald-950/80 border-emerald-400 shadow-md shadow-emerald-950/50 ring-1 ring-emerald-400'
+                      : 'bg-[#10141D] border-[#222E42] text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold font-mono text-emerald-300 flex items-center gap-1.5">
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${multiPageGangMode ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      ✓ Yes, Gang Impose All {artworkDims.pageCount} Pages
+                    </span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                      RECOMMENDED
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 font-mono m-0 leading-relaxed">
+                    Places each page design onto a separate Up slot (e.g. 6-UP layout holds all {artworkDims.pageCount} pages on 1 sheet; 4-UP layout generates 2 sheets). Drag & swap any position freely.
+                  </p>
+                </button>
+
+                {/* Option B: Repeat Page 1 */}
+                <button
+                  type="button"
+                  onClick={() => setMultiPageGangMode(false)}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                    !multiPageGangMode
+                      ? 'bg-cyan-950/80 border-cyan-400 shadow-md shadow-cyan-950/50 ring-1 ring-cyan-400'
+                      : 'bg-[#10141D] border-[#222E42] text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold font-mono text-cyan-300 flex items-center gap-1.5">
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${!multiPageGangMode ? 'text-cyan-400' : 'text-slate-600'}`} />
+                      Single Design Only (Step & Repeat Page 1)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-mono m-0 leading-relaxed">
+                    Standard step-and-repeat: Repeats Page 1 across all positions of the sheet.
+                  </p>
+                </button>
+              </div>
+
+              {/* Option C: Multi-File Batch Gang Run */}
+              {onOpenGangModal && (
+                <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-slate-400">Have multiple single-page files instead?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenGangModal();
+                    }}
+                    className="text-cyan-300 hover:text-white font-bold flex items-center gap-1 underline underline-offset-2 transition-all cursor-pointer"
+                  >
+                    <span>Open Multi-File Gang Studio (Auto-Find Best Sheet Size)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ─── Step 2: Press Sheet Size & UPS Selection ─── */}
           <div>
             <div className="flex items-center justify-between mb-2.5">
@@ -497,6 +602,23 @@ export default function ProductAndSheetModal({
                           </span>
                         )}
                       </div>
+
+                      {/* Multi-Page Gang Capacity & Sheet Count Indicator */}
+                      {productType === 'BOX' && artworkDims.pageCount > 1 && multiPageGangMode && (
+                        <div className="mt-2 pt-1.5 border-t border-white/5 text-[10px] font-mono">
+                          {sheet.ups >= artworkDims.pageCount ? (
+                            <span className="text-emerald-300 font-bold flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
+                              All {artworkDims.pageCount} pages fit on 1 sheet ({sheet.ups} UP)
+                            </span>
+                          ) : (
+                            <span className="text-cyan-300 font-bold flex items-center gap-1">
+                              <Layers className="w-3 h-3 text-cyan-400 shrink-0" />
+                              {Math.ceil(artworkDims.pageCount / sheet.ups)} sheets generated (Sheet 1: P.1–{sheet.ups}, Sheet 2: P.{sheet.ups + 1}–{artworkDims.pageCount})
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Miniature Layout Preview & Efficiency */}

@@ -524,7 +524,16 @@ export default function ImpositionSection({
       }
 
       setBoxGutterX(isInch ? 0.118 : 3.0);
-      setBoxGutterY(isInch ? 0.118 : 3.0);
+      if (interlockMode === 'INTERLOCKING') {
+        const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+        const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+        const nestY_MM = -Math.max(0, tuckMM - 3.0);
+        const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+        setBoxGutterY(nestY);
+        setBoxGuttersLinked(false);
+      } else {
+        setBoxGutterY(isInch ? 0.118 : 3.0);
+      }
       setInterlockShiftX(0);
       setInterlockShiftY(0);
       setMarginTop(6.35);
@@ -532,7 +541,7 @@ export default function ImpositionSection({
       setMarginLeft(6.35);
       setMarginRight(6.35);
     }
-  }, [partMode, detectedArtBox, packagingUnit, trimHeader]);
+  }, [partMode, detectedArtBox, packagingUnit, trimHeader, interlockMode, tuckFlapHeight]);
 
   // Fallback to fetch detected margins from backend if analysisData did not include vector content bounding box
   useEffect(() => {
@@ -557,7 +566,16 @@ export default function ImpositionSection({
           }
 
           setBoxGutterX(isInch ? 0.118 : 3.0);
-          setBoxGutterY(isInch ? 0.118 : 3.0);
+          if (interlockMode === 'INTERLOCKING') {
+            const rawTuck = parseFloat(tuckFlapHeight) || (isInch ? 1.5 : 35);
+            const tuckMM = isInch ? rawTuck * 25.4 : (rawTuck < 5 ? rawTuck * 25.4 : rawTuck);
+            const nestY_MM = -Math.max(0, tuckMM - 3.0);
+            const nestY = isInch ? Math.round((nestY_MM / 25.4) * 100) / 100 : Math.round(nestY_MM * 10) / 10;
+            setBoxGutterY(nestY);
+            setBoxGuttersLinked(false);
+          } else {
+            setBoxGutterY(isInch ? 0.118 : 3.0);
+          }
           setInterlockShiftX(0);
           setInterlockShiftY(0);
           setMarginTop(6.35);
@@ -567,7 +585,7 @@ export default function ImpositionSection({
         }
       }).catch(() => {});
     }
-  }, [partMode, detectedArtBox, jobId, packagingUnit, trimHeader]);
+  }, [partMode, detectedArtBox, jobId, packagingUnit, trimHeader, interlockMode, tuckFlapHeight]);
 
   const [bookWidth, setBookWidth] = useState(148);
   const [bookHeight, setBookHeight] = useState(210);

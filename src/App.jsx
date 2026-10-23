@@ -334,6 +334,7 @@ export default function App() {
                     onUploadSuccess={handleUploadSuccess}
                     onOpenHistory={() => setIsHistoryOpen(true)}
                     onOpenKeylineStudio={() => setIsKeylineStudioOpen(true)}
+                    onOpenGangModal={() => setIsGangModalOpen(true)}
                   />
                 )}
 
